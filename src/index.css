@@ -1,0 +1,262 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid rgba(168, 130, 82, 0.78);
+    outline-offset: 2px;
+  }
+}
+
+/* Writing Hands */
+.font-hand-kalam {
+  font-family: 'Kalam', Georgia, serif;
+}
+
+.font-hand-patrick {
+  font-family: 'Patrick Hand', Georgia, serif;
+}
+
+.font-hand-caveat {
+  font-family: 'Caveat', Georgia, serif;
+}
+
+.font-book-serif {
+  font-family: 'Lora', Georgia, serif;
+}
+
+.font-book-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Authentic matte cotton paper fiber grain (SVG fractal noise + micro fleck) */
+.texture-paper-grain {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23p)' opacity='0.068'/%3E%3C/svg%3E"),
+    radial-gradient(rgba(90, 74, 54, 0.032) 0.8px, transparent 0),
+    radial-gradient(rgba(60, 48, 34, 0.025) 0.7px, transparent 0);
+  background-size: 220px 220px, 19px 19px, 11px 11px;
+  background-position: 0 0, 0 0, 5px 7px;
+}
+
+.texture-paper-dark {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23p)' opacity='0.095'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+}
+
+/* Optional Paper Rulings (Plain is default; enabled only when chosen in settings) */
+.ruling-lined {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 27px,
+    var(--rule-line, rgba(114, 128, 148, 0.22)) 27px,
+    var(--rule-line, rgba(114, 128, 148, 0.22)) 28px
+  );
+  background-position: 0 42px;
+}
+
+.ruling-dot-grid {
+  background-image: radial-gradient(
+    var(--rule-dot, rgba(110, 102, 92, 0.28)) 1.05px,
+    transparent 1.05px
+  );
+  background-size: 20px 20px;
+  background-position: 10px 10px;
+}
+
+.ruling-graph {
+  background-image:
+    linear-gradient(to right, var(--rule-line, rgba(112, 124, 138, 0.16)) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule-line, rgba(112, 124, 138, 0.16)) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.texture-linen-table {
+  background-color: #dcd5c9;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(95, 84, 68, 0.045) 0px,
+      rgba(95, 84, 68, 0.045) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(95, 84, 68, 0.045) 0px,
+      rgba(95, 84, 68, 0.045) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    radial-gradient(circle at 30% 25%, rgba(255, 252, 245, 0.45), transparent 65%);
+}
+
+.texture-cover-linen {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23c)' opacity='0.07'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.045) 0px,
+      rgba(255, 255, 255, 0.045) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.08) 0px,
+      rgba(0, 0, 0, 0.08) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+.texture-cover-aged {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.03) 0px,
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    radial-gradient(ellipse at 20% 20%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(ellipse at 85% 80%, rgba(0, 0, 0, 0.14), transparent 55%);
+}
+
+.texture-cover-paperboard {
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 0),
+    radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 0);
+  background-size: 16px 16px, 9px 9px;
+}
+
+.texture-cover-leather {
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.035) 1.5px, transparent 0),
+    radial-gradient(rgba(0, 0, 0, 0.09) 1px, transparent 0),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 45%, rgba(0, 0, 0, 0.14) 100%);
+  background-size: 7px 7px, 5px 5px, 100% 100%;
+}
+
+.ruled-notebook {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 27px,
+    rgba(122, 114, 102, 0.18) 27px,
+    rgba(122, 114, 102, 0.18) 28px
+  );
+  background-position: 0 12px;
+}
+
+/* Realistic turning leaf overlay */
+@keyframes leafFlipForward {
+  0% {
+    transform: perspective(1800px) rotateY(0deg);
+    opacity: 0.94;
+  }
+  50% {
+    transform: perspective(1800px) rotateY(-92deg);
+    opacity: 0.72;
+  }
+  100% {
+    transform: perspective(1800px) rotateY(-178deg);
+    opacity: 0;
+  }
+}
+
+@keyframes leafFlipBackward {
+  0% {
+    transform: perspective(1800px) rotateY(0deg);
+    opacity: 0.94;
+  }
+  50% {
+    transform: perspective(1800px) rotateY(92deg);
+    opacity: 0.72;
+  }
+  100% {
+    transform: perspective(1800px) rotateY(178deg);
+    opacity: 0;
+  }
+}
+
+@keyframes pageCrossfade {
+  0% {
+    opacity: 0.76;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes pencilMarkFade {
+  0% {
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-leaf-forward {
+  animation: leafFlipForward 360ms cubic-bezier(0.28, 0.08, 0.24, 1) forwards;
+  transform-origin: left center;
+}
+
+.animate-leaf-backward {
+  animation: leafFlipBackward 360ms cubic-bezier(0.28, 0.08, 0.24, 1) forwards;
+  transform-origin: right center;
+}
+
+.animate-turn-reduced {
+  animation: pageCrossfade 180ms ease-out;
+}
+
+.animate-resume-pencil {
+  animation: pencilMarkFade 4.5s ease-out forwards;
+}
+
+/* Subtle organic baseline variation for human print handwriting */
+.hand-glyph-subtle {
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  hanging-punctuation: first last;
+}
+
+/* Custom thin unobtrusive scrollbars inside back-cover notes only */
+.quiet-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.quiet-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.quiet-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 110, 96, 0.28);
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-turn-forward,
+  .animate-turn-backward {
+    animation: pageCrossfade 160ms ease-out;
+  }
+}

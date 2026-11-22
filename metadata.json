@@ -1,0 +1,6 @@
+{
+  "name": "The Quiet Volume",
+  "description": "A personal bound book resting in a quiet reading environment. Bind TXT, Markdown, PDF, EPUB, and ZIP files locally in your browser.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

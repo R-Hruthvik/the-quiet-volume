@@ -1,0 +1,259 @@
+import type { BookVolume, ReaderSettings } from '../types/book';
+
+const DB_NAME = 'quiet-volume-library';
+const DB_VERSION = 1;
+const STORE_VOLUMES = 'volumes';
+const SETTINGS_KEY = 'quiet-volume-settings-v1';
+const ACTIVE_BOOK_KEY = 'quiet-volume-active-id-v1';
+const FALLBACK_VOLUMES_KEY = 'quiet-volume-volumes-fallback-v1';
+
+export const DEFAULT_SETTINGS: ReaderSettings = {
+  pageMode: 'two-page',
+  pageFormat: 'notebook',
+  paperRuling: 'plain',
+  bookSize: 'a5-notebook',
+  cameraZoom: 1.0,
+  cameraTilt: 8,
+  writingHand: 'kalam',
+  writingSize: 'natural',
+  pageSpacing: 'natural',
+  paper: 'white-cotton',
+  lighting: 'daylight',
+  autoLighting: false,
+  environment: 'wooden-table',
+  reducedMotion: false,
+  reducedTexture: false,
+  soundEnabled: false,
+  useColoredRibbons: false,
+  restReminderEnabled: true,
+  ttsProvider: 'deepgram',
+  ttsVoice: 'aura-asteria-en',
+  ttsSpeed: 1.0,
+};
+
+function openDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE_VOLUMES)) {
+          db.createObjectStore(STORE_VOLUMES, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function loadVolumes(): Promise<BookVolume[]> {
+  const db = await openDb();
+  if (db) {
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE_VOLUMES, 'readonly');
+        const store = tx.objectStore(STORE_VOLUMES);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const items = (req.result as BookVolume[]) || [];
+          items.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
+          resolve(items);
+        };
+        req.onerror = () => resolve(loadFallbackVolumes());
+      } catch {
+        resolve(loadFallbackVolumes());
+      }
+    });
+  }
+  return loadFallbackVolumes();
+}
+
+function loadFallbackVolumes(): BookVolume[] {
+  try {
+    const raw = localStorage.getItem(FALLBACK_VOLUMES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BookVolume[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveVolume(volume: BookVolume): Promise<void> {
+  const db = await openDb();
+  if (db) {
+    await new Promise<void>((resolve) => {
+      try {
+        const tx = db.transaction(STORE_VOLUMES, 'readwrite');
+        tx.objectStore(STORE_VOLUMES).put(volume);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
+  try {
+    const existing = loadFallbackVolumes().filter((v) => v.id !== volume.id);
+    existing.unshift(volume);
+    localStorage.setItem(FALLBACK_VOLUMES_KEY, JSON.stringify(existing));
+  } catch {
+    // Ignore quota errors in fallback mirror
+  }
+}
+
+export async function removeVolume(volumeId: string): Promise<void> {
+  const db = await openDb();
+  if (db) {
+    await new Promise<void>((resolve) => {
+      try {
+        const tx = db.transaction(STORE_VOLUMES, 'readwrite');
+        tx.objectStore(STORE_VOLUMES).delete(volumeId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
+  try {
+    const remaining = loadFallbackVolumes().filter((v) => v.id !== volumeId);
+    localStorage.setItem(FALLBACK_VOLUMES_KEY, JSON.stringify(remaining));
+  } catch {
+    // ignore
+  }
+}
+
+export async function clearAllVolumes(): Promise<void> {
+  const db = await openDb();
+  if (db) {
+    await new Promise<void>((resolve) => {
+      try {
+        const tx = db.transaction(STORE_VOLUMES, 'readwrite');
+        tx.objectStore(STORE_VOLUMES).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
+  try {
+    localStorage.removeItem(FALLBACK_VOLUMES_KEY);
+    localStorage.removeItem(ACTIVE_BOOK_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function loadSettings(): ReaderSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) {
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const hour = new Date().getHours();
+      const defaultLighting = hour >= 19 || hour < 6 ? 'warm-lamp' : 'daylight';
+      const defaultPageMode =
+        typeof window !== 'undefined' && window.innerWidth < 960 ? 'single' : 'two-page';
+      return {
+        ...DEFAULT_SETTINGS,
+        lighting: defaultLighting,
+        pageMode: defaultPageMode,
+        reducedMotion: Boolean(prefersReduced),
+      };
+    }
+    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ReaderSettings>) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export function saveSettings(settings: ReaderSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // ignore
+  }
+}
+
+export function loadLastActiveBookId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_BOOK_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastActiveBookId(id: string | null): void {
+  try {
+    if (id) {
+      localStorage.setItem(ACTIVE_BOOK_KEY, id);
+    } else {
+      localStorage.removeItem(ACTIVE_BOOK_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function estimateVolumeBytes(volume: BookVolume): number {
+  try {
+    return new Blob([JSON.stringify(volume)]).size;
+  } catch {
+    return JSON.stringify(volume).length * 2;
+  }
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+export function exportVolumeAsMarkdown(volume: BookVolume): void {
+  const lines: string[] = [];
+  lines.push(`# ${volume.title}`);
+  if (volume.author) lines.push(`By ${volume.author}`);
+  lines.push('');
+
+  for (const block of volume.blocks) {
+    if (block.kind === 'chapter-title') {
+      lines.push(`\n## ${block.text}\n`);
+    } else if (block.kind === 'heading') {
+      lines.push(`\n### ${block.text}\n`);
+    } else if (block.kind === 'scene-break') {
+      lines.push('\n***\n');
+    } else if (block.kind === 'quote') {
+      lines.push(`> ${block.text}\n`);
+    } else if (block.kind === 'code') {
+      lines.push(`\`\`\`\n${block.text}\n\`\`\`\n`);
+    } else if (block.kind === 'source-note') {
+      lines.push(`_${block.text}_\n`);
+    } else {
+      lines.push(`${block.text}\n`);
+    }
+
+    const blockNotes = volume.notes.filter((n) => n.blockId === block.id);
+    for (const note of blockNotes) {
+      lines.push(`[Margin note: ${note.text}]\n`);
+    }
+  }
+
+  if (volume.finalThought) {
+    lines.push(`\n---\nFinal thought: ${volume.finalThought}\n`);
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${volume.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
