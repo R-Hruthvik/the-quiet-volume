@@ -280,6 +280,52 @@ test('single-page camera crops left/right pages on constant-size book and comput
   assert.ok(rightFocus.effectiveScale > 0.8);
 });
 
+test('mobile single-page camera scales to fit mobile width without clipping active leaf bounds', () => {
+  const safeW = 390;
+  const safeH = 844;
+
+  for (const sizeId of BOOK_SIZE_ORDER) {
+    const metrics = getPhysicalBookMetrics(sizeId);
+
+    const leftFocus = computeBookCameraTransform({
+      metrics,
+      viewportWidth: safeW,
+      viewportHeight: safeH,
+      pageMode: 'single',
+      activeSide: 'left',
+      userZoom: 1.0,
+      scrollY: 0,
+    });
+
+    const rightFocus = computeBookCameraTransform({
+      metrics,
+      viewportWidth: safeW,
+      viewportHeight: safeH,
+      pageMode: 'single',
+      activeSide: 'right',
+      userZoom: 1.0,
+      scrollY: 0,
+    });
+
+    // Verify effectiveScale does not make single page width exceed safeW * 0.98
+    const pageWLeft = metrics.singlePageWidth * leftFocus.effectiveScale;
+    const pageWRight = metrics.singlePageWidth * rightFocus.effectiveScale;
+    assert.ok(pageWLeft <= safeW * 0.98, `${sizeId} left page width must not exceed 98% safeW`);
+    assert.ok(pageWRight <= safeW * 0.98, `${sizeId} right page width must not exceed 98% safeW`);
+
+    // Verify translateX places the active leaf bounds within [0, safeW]
+    const leftLeafLeft = safeW / 2 + leftFocus.translateX - pageWLeft;
+    const leftLeafRight = safeW / 2 + leftFocus.translateX;
+    assert.ok(leftLeafLeft >= 0, `${sizeId} left leaf left bound >= 0 (got ${leftLeafLeft})`);
+    assert.ok(leftLeafRight <= safeW, `${sizeId} left leaf right bound <= ${safeW} (got ${leftLeafRight})`);
+
+    const rightLeafLeft = safeW / 2 + rightFocus.translateX;
+    const rightLeafRight = rightLeafLeft + pageWRight;
+    assert.ok(rightLeafLeft >= 0, `${sizeId} right leaf left bound >= 0 (got ${rightLeafLeft})`);
+    assert.ok(rightLeafRight <= safeW, `${sizeId} right leaf right bound <= ${safeW} (got ${rightLeafRight})`);
+  }
+});
+
 test('notebook format fits more prose per page than wide-margin novel format', () => {
   const [starter] = createStarterVolumes();
   const notebookPages = paginateBook(starter, {

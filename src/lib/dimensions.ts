@@ -166,7 +166,7 @@ export function computeBookCameraTransform(params: {
     const targetWidth = safeW * (safeW < 640 ? 0.96 : safeW < 1024 ? 0.88 : 0.80);
     const scaleByWidth = targetWidth / cropMetricsWidth;
     const scaleByHeight = (safeH * 1.12) / metrics.outerHeight;
-    baseScale = Math.max(scaleByHeight, Math.min(scaleByWidth, 1.85));
+    baseScale = safeW < 640 ? scaleByWidth : Math.min(scaleByWidth, scaleByHeight * 1.12);
   } else {
     // Two-page spread: frame the full two-page open book
     const fitW = (safeW * 0.90) / metrics.outerSpreadWidth;
