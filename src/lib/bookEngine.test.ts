@@ -21,7 +21,17 @@ import {
   shouldAskToBindTogether,
   sortRelatedFiles,
 } from './parser';
-import { resolveLightingForHour } from './lighting';
+import {
+  ENVIRONMENTS,
+  LIGHTING_MODES,
+  PAPER_STOCKS,
+  getEffectiveLighting,
+  getEnvironmentSpec,
+  getLightingSpec,
+  getPaperSpec,
+  resolveLightingForHour,
+} from './lighting';
+import { sanitizeSettings } from './storage';
 import { createStarterVolumes } from './sampleVolumes';
 import {
   filterTextFiles,
@@ -180,6 +190,45 @@ test('clampSpreadStart and resolveLightingForHour behave accurately', () => {
   assert.equal(resolveLightingForHour(16), 'overcast');
   assert.equal(resolveLightingForHour(20), 'warm-lamp');
   assert.equal(resolveLightingForHour(2), 'night-light');
+});
+
+test('defensive theme fallbacks protect against unknown or invalid keys', () => {
+  // Proxy fallback lookups
+  assert.equal((LIGHTING_MODES as Record<string, any>)['non-existent-mode'].id, 'warm-lamp');
+  assert.equal((LIGHTING_MODES as Record<string, any>)[undefined as unknown as string].id, 'warm-lamp');
+  assert.equal((LIGHTING_MODES as Record<string, any>)[null as unknown as string].id, 'warm-lamp');
+  assert.equal((PAPER_STOCKS as Record<string, any>)['unknown-stock'].id, 'white-cotton');
+  assert.equal((PAPER_STOCKS as Record<string, any>)[undefined as unknown as string].id, 'white-cotton');
+  assert.equal((ENVIRONMENTS as Record<string, any>)['unknown-env'].id, 'wooden-table');
+  assert.equal((ENVIRONMENTS as Record<string, any>)[undefined as unknown as string].id, 'wooden-table');
+
+  // Helper functions
+  assert.equal(getLightingSpec('bogus').id, 'warm-lamp');
+  assert.equal(getLightingSpec(undefined).id, 'warm-lamp');
+  assert.equal(getLightingSpec('daylight').id, 'daylight');
+
+  assert.equal(getPaperSpec('bogus').id, 'white-cotton');
+  assert.equal(getPaperSpec(undefined).id, 'white-cotton');
+  assert.equal(getPaperSpec('dark-charcoal').id, 'dark-charcoal');
+
+  assert.equal(getEnvironmentSpec('bogus').id, 'wooden-table');
+  assert.equal(getEnvironmentSpec(undefined).id, 'wooden-table');
+  assert.equal(getEnvironmentSpec('dark-space').id, 'dark-space');
+
+  // Effective lighting fallback
+  assert.equal(getEffectiveLighting('invalid-mode', false), 'warm-lamp');
+  assert.equal(getEffectiveLighting(undefined, false), 'warm-lamp');
+  assert.equal(getEffectiveLighting('daylight', false), 'daylight');
+
+  // Storage settings sanitization
+  const sanitized = sanitizeSettings({
+    lighting: 'invalid' as any,
+    paper: 'neon-pink' as any,
+    environment: 'outer-space' as any,
+  });
+  assert.equal(sanitized.lighting, 'daylight');
+  assert.equal(sanitized.paper, 'white-cotton');
+  assert.equal(sanitized.environment, 'wooden-table');
 });
 
 test('all 6 physical book sizes maintain accurate mm ratios and consistent open/closed heights', () => {

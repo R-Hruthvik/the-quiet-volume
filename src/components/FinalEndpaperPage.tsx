@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { formatShortDate } from '../lib/parser';
 import { ColophonMark } from './BookOrnaments';
 import type { BookVolume } from '../types/book';
-import type { PaperSpec } from '../lib/lighting';
+import { getPaperSpec, type PaperSpec } from '../lib/lighting';
 
 interface FinalEndpaperPageProps {
   volume: BookVolume;
-  paper: PaperSpec;
+  paper?: PaperSpec;
   onSaveFinalThought: (thought: string) => void;
   onCloseBook: () => void;
   onOpenBackCover: () => void;
@@ -14,11 +14,12 @@ interface FinalEndpaperPageProps {
 
 export function FinalEndpaperPage({
   volume,
-  paper,
+  paper: rawPaper,
   onSaveFinalThought,
   onCloseBook,
   onOpenBackCover,
 }: FinalEndpaperPageProps) {
+  const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id);
   const [thought, setThought] = useState(volume.finalThought || '');
   const finishedDate = formatShortDate(volume.finishedAt || Date.now());
 

@@ -15,7 +15,28 @@ export interface PaperSpec {
   isDarkPaper: boolean;
 }
 
-export const PAPER_STOCKS: Record<PaperStock, PaperSpec> = {
+export const DEFAULT_PAPER_STOCK: PaperStock = 'white-cotton';
+export const DEFAULT_LIGHTING_MODE: LightingMode = 'warm-lamp';
+export const DEFAULT_ENVIRONMENT: EnvironmentSurface = 'wooden-table';
+
+function createFallbackProxy<T extends Record<string, any>>(
+  map: T,
+  fallbackKey: keyof T
+): T {
+  return new Proxy(map, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string' && prop in target) {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (typeof prop === 'string' && prop !== 'then' && prop !== 'prototype') {
+        return target[fallbackKey];
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+const RAW_PAPER_STOCKS: Record<PaperStock, PaperSpec> = {
   'white-cotton': {
     id: 'white-cotton',
     label: 'White cotton',
@@ -102,6 +123,11 @@ export const PAPER_STOCKS: Record<PaperStock, PaperSpec> = {
   },
 };
 
+export const PAPER_STOCKS: Record<PaperStock, PaperSpec> = createFallbackProxy(
+  RAW_PAPER_STOCKS,
+  DEFAULT_PAPER_STOCK
+);
+
 export interface LightingSpec {
   id: LightingMode;
   label: string;
@@ -116,7 +142,7 @@ export interface LightingSpec {
   isDim: boolean;
 }
 
-export const LIGHTING_MODES: Record<LightingMode, LightingSpec> = {
+const RAW_LIGHTING_MODES: Record<LightingMode, LightingSpec> = {
   daylight: {
     id: 'daylight',
     label: 'Daylight',
@@ -195,6 +221,11 @@ export const LIGHTING_MODES: Record<LightingMode, LightingSpec> = {
   },
 };
 
+export const LIGHTING_MODES: Record<LightingMode, LightingSpec> = createFallbackProxy(
+  RAW_LIGHTING_MODES,
+  DEFAULT_LIGHTING_MODE
+);
+
 export const LIGHTING_ORDER: LightingMode[] = [
   'daylight',
   'overcast',
@@ -214,7 +245,7 @@ export interface EnvironmentSpec {
   isDarkSurface: boolean;
 }
 
-export const ENVIRONMENTS: Record<EnvironmentSurface, EnvironmentSpec> = {
+const RAW_ENVIRONMENTS: Record<EnvironmentSurface, EnvironmentSpec> = {
   'wooden-table': {
     id: 'wooden-table',
     label: 'Wooden table',
@@ -255,7 +286,46 @@ export const ENVIRONMENTS: Record<EnvironmentSurface, EnvironmentSpec> = {
   },
 };
 
+export const ENVIRONMENTS: Record<EnvironmentSurface, EnvironmentSpec> = createFallbackProxy(
+  RAW_ENVIRONMENTS,
+  DEFAULT_ENVIRONMENT
+);
+
+export function isValidLightingMode(mode: unknown): mode is LightingMode {
+  return typeof mode === 'string' && mode in RAW_LIGHTING_MODES;
+}
+
+export function isValidPaperStock(stock: unknown): stock is PaperStock {
+  return typeof stock === 'string' && stock in RAW_PAPER_STOCKS;
+}
+
+export function isValidEnvironmentSurface(env: unknown): env is EnvironmentSurface {
+  return typeof env === 'string' && env in RAW_ENVIRONMENTS;
+}
+
+export function getLightingSpec(mode?: string | null): LightingSpec {
+  if (mode && mode in RAW_LIGHTING_MODES) {
+    return RAW_LIGHTING_MODES[mode as LightingMode];
+  }
+  return RAW_LIGHTING_MODES[DEFAULT_LIGHTING_MODE];
+}
+
+export function getPaperSpec(stock?: string | null): PaperSpec {
+  if (stock && stock in RAW_PAPER_STOCKS) {
+    return RAW_PAPER_STOCKS[stock as PaperStock];
+  }
+  return RAW_PAPER_STOCKS[DEFAULT_PAPER_STOCK];
+}
+
+export function getEnvironmentSpec(env?: string | null): EnvironmentSpec {
+  if (env && env in RAW_ENVIRONMENTS) {
+    return RAW_ENVIRONMENTS[env as EnvironmentSurface];
+  }
+  return RAW_ENVIRONMENTS[DEFAULT_ENVIRONMENT];
+}
+
 export function resolveLightingForHour(hour: number): LightingMode {
+  if (Number.isNaN(hour)) return DEFAULT_LIGHTING_MODE;
   if (hour >= 7 && hour < 15) return 'daylight';
   if (hour >= 15 && hour < 18) return 'overcast';
   if (hour >= 18 && hour < 22) return 'warm-lamp';
@@ -263,10 +333,11 @@ export function resolveLightingForHour(hour: number): LightingMode {
 }
 
 export function getEffectiveLighting(
-  configured: LightingMode,
-  autoLighting: boolean,
+  configured?: string | null,
+  autoLighting?: boolean,
   date: Date = new Date()
 ): LightingMode {
-  if (!autoLighting) return configured;
-  return resolveLightingForHour(date.getHours());
+  if (autoLighting) return resolveLightingForHour(date.getHours());
+  if (isValidLightingMode(configured)) return configured;
+  return DEFAULT_LIGHTING_MODE;
 }

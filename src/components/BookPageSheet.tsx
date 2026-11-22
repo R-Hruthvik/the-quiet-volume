@@ -11,7 +11,7 @@ import type {
   PaperRuling,
   ReaderSettings,
 } from '../types/book';
-import type { PaperSpec } from '../lib/lighting';
+import { getPaperSpec, type PaperSpec } from '../lib/lighting';
 
 interface BookPageSheetProps {
   page: PaginatedPage | null;
@@ -20,7 +20,7 @@ interface BookPageSheetProps {
   volume: BookVolume;
   totalVolumesCount: number;
   settings: ReaderSettings;
-  paper: PaperSpec;
+  paper?: PaperSpec;
   gutterOpacity: number;
   isDogEared: boolean;
   resumeBlockId?: string | null;
@@ -160,7 +160,7 @@ export function BookPageSheet({
   volume,
   totalVolumesCount,
   settings,
-  paper,
+  paper: rawPaper,
   gutterOpacity,
   isDogEared,
   resumeBlockId,
@@ -178,6 +178,7 @@ export function BookPageSheet({
   onEmptyReadingRoom,
   onJumpToToc,
 }: BookPageSheetProps) {
+  const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id || settings?.paper);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState('');
 

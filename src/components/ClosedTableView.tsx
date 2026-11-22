@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { getFolderNameFromFiles } from '../lib/fileImporter';
 import { computeDesktopTableLayout, getPhysicalBookMetrics } from '../lib/dimensions';
 import { getCoverMaterialClass } from '../lib/identity';
-import { LIGHTING_MODES } from '../lib/lighting';
+import { getLightingSpec } from '../lib/lighting';
 import { formatShortDate } from '../lib/parser';
 import { ColophonMark } from './BookOrnaments';
 import type { BookSizeId, BookVolume, LightingMode } from '../types/book';
@@ -73,7 +73,7 @@ export function ClosedTableView({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const lightSpec = LIGHTING_MODES[lighting];
+  const lightSpec = getLightingSpec(lighting);
   const metrics = useMemo(() => getPhysicalBookMetrics(bookSize), [bookSize]);
   const layout = useMemo(
     () => computeDesktopTableLayout(metrics, viewport.w, viewport.h),

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { computeBookCameraTransform, getPhysicalBookMetrics } from '../lib/dimensions';
 import { getCoverMaterialClass } from '../lib/identity';
-import { LIGHTING_MODES, PAPER_STOCKS } from '../lib/lighting';
+import { getLightingSpec, getPaperSpec } from '../lib/lighting';
 import {
   clampSpreadStart,
   estimateReadingProgress,
@@ -209,8 +209,8 @@ export function OpenBookView({
     }
   }, [camera.maxScrollY, scrollY]);
 
-  const paper = PAPER_STOCKS[settings.paper];
-  const lightSpec = LIGHTING_MODES[effectiveLighting];
+  const paper = getPaperSpec(settings.paper);
+  const lightSpec = getLightingSpec(effectiveLighting);
 
   const progress = useMemo(
     () =>

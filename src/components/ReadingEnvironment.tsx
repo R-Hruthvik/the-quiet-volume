@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { extractFilesFromDataTransfer } from '../lib/fileImporter';
-import { ENVIRONMENTS, LIGHTING_MODES } from '../lib/lighting';
+import { getEnvironmentSpec, getLightingSpec } from '../lib/lighting';
 import type { EnvironmentSurface, LightingMode } from '../types/book';
 
 interface ReadingEnvironmentProps {
@@ -22,8 +22,8 @@ export function ReadingEnvironment({
   onDropFiles,
   children,
 }: ReadingEnvironmentProps) {
-  const envSpec = ENVIRONMENTS[environment];
-  const lightSpec = LIGHTING_MODES[lighting];
+  const envSpec = getEnvironmentSpec(environment);
+  const lightSpec = getLightingSpec(lighting);
   const [imageFailed, setImageFailed] = useState(false);
   const [sessionDrift, setSessionDrift] = useState(0);
 

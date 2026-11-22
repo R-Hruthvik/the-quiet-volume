@@ -3,12 +3,12 @@ import { estimateVolumeBytes, exportVolumeAsMarkdown, formatBytes } from '../lib
 import { formatShortDate } from '../lib/parser';
 import { ColophonMark, getEndpaperBackgroundStyle } from './BookOrnaments';
 import type { BookVolume, TocEntry } from '../types/book';
-import type { PaperSpec } from '../lib/lighting';
+import { getPaperSpec, type PaperSpec } from '../lib/lighting';
 
 interface BookplatePageProps {
   volume: BookVolume;
   totalVolumesCount: number;
-  paper: PaperSpec;
+  paper?: PaperSpec;
   reducedTexture: boolean;
   onRemoveVolume: (id: string) => void;
   onEmptyReadingRoom: () => void;
@@ -18,12 +18,13 @@ interface BookplatePageProps {
 export function BookplatePage({
   volume,
   totalVolumesCount,
-  paper,
+  paper: rawPaper,
   reducedTexture,
   onRemoveVolume,
   onEmptyReadingRoom,
   onJumpToToc,
 }: BookplatePageProps) {
+  const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id);
   const [expanded, setExpanded] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmEmpty, setConfirmEmpty] = useState(false);
@@ -228,11 +229,12 @@ export function BookplatePage({
 
 interface TitlePageProps {
   volume: BookVolume;
-  paper: PaperSpec;
+  paper?: PaperSpec;
   handClass: string;
 }
 
-export function TitlePage({ volume, paper, handClass }: TitlePageProps) {
+export function TitlePage({ volume, paper: rawPaper, handClass }: TitlePageProps) {
+  const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id);
   return (
     <div
       className="flex h-full w-full flex-col items-center justify-between px-8 py-12 sm:px-12 sm:py-16 text-center"
@@ -269,7 +271,7 @@ export function TitlePage({ volume, paper, handClass }: TitlePageProps) {
 interface TocPageProps {
   entries: TocEntry[];
   isCollection: boolean;
-  paper: PaperSpec;
+  paper?: PaperSpec;
   handClass: string;
   onSelectPageNumber: (pageNumber: number) => void;
 }
@@ -277,10 +279,11 @@ interface TocPageProps {
 export function TocPage({
   entries,
   isCollection,
-  paper,
+  paper: rawPaper,
   handClass,
   onSelectPageNumber,
 }: TocPageProps) {
+  const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id);
   const [filterQuery, setFilterQuery] = useState('');
 
   const filtered = filterQuery.trim()

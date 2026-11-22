@@ -28,6 +28,7 @@ import {
   loadSettings,
   loadVolumes,
   removeVolume,
+  sanitizeSettings,
   saveLastActiveBookId,
   saveSettings,
   saveVolume,
@@ -130,7 +131,7 @@ export default function App() {
   // Persist settings whenever updated
   const updateSettings = useCallback((patch: Partial<ReaderSettings>) => {
     setSettings((prev) => {
-      const next = { ...prev, ...patch };
+      const next = sanitizeSettings({ ...prev, ...patch });
       saveSettings(next);
       return next;
     });

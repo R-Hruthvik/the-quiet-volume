@@ -16,6 +16,9 @@ import {
   LIGHTING_MODES,
   LIGHTING_ORDER,
   PAPER_STOCKS,
+  getEnvironmentSpec,
+  getLightingSpec,
+  getPaperSpec,
 } from '../lib/lighting';
 import { clampSpreadStart, searchBook } from '../lib/parser';
 import { playCoverCloseSound, playPaperTurnSound } from '../lib/sound';
@@ -234,8 +237,8 @@ export function SettingsBookView({
     }
   }, [camera.maxScrollY, scrollY]);
 
-  const paper = PAPER_STOCKS[settings.paper];
-  const lightSpec = LIGHTING_MODES[effectiveLighting];
+  const paper = getPaperSpec(settings.paper);
+  const lightSpec = getLightingSpec(effectiveLighting);
   const currentSizeSpec = BOOK_SIZES[settings.bookSize] || BOOK_SIZES['a5-notebook'];
   const lightIdx = LIGHTING_ORDER.indexOf(settings.lighting);
   const searchHits = useMemo(() => searchBook(pages, searchQuery), [pages, searchQuery]);
@@ -1078,7 +1081,7 @@ export function SettingsBookView({
               className="relative mt-3 flex flex-1 min-h-[124px] items-center justify-center overflow-hidden rounded-[3px] border shadow-inner"
               style={{
                 borderColor: `${paper.ink}24`,
-                background: ENVIRONMENTS[settings.environment].fallbackBg,
+                background: getEnvironmentSpec(settings.environment).fallbackBg,
               }}
             >
               <div
@@ -1181,7 +1184,7 @@ export function SettingsBookView({
                   style={{ backgroundColor: paper.ink }}
                 />
                 {LIGHTING_ORDER.map((mode: LightingMode) => {
-                  const spec = LIGHTING_MODES[mode];
+                  const spec = getLightingSpec(mode);
                   const active = !settings.autoLighting && settings.lighting === mode;
                   return (
                     <button
@@ -1210,7 +1213,7 @@ export function SettingsBookView({
               <p className="mt-2 text-center font-hand-patrick text-[11px] opacity-70">
                 {settings.autoLighting
                   ? 'Gradually follows your local hour outside.'
-                  : `${LIGHTING_MODES[LIGHTING_ORDER[Math.max(0, lightIdx)]].label} illumination`}
+                  : `${getLightingSpec(settings.lighting).label} illumination`}
               </p>
             </div>
 
@@ -1224,7 +1227,7 @@ export function SettingsBookView({
 
               <div className="mt-3 grid grid-cols-2 gap-2.5">
                 {(Object.keys(PAPER_STOCKS) as PaperStock[]).map((stockId) => {
-                  const stock = PAPER_STOCKS[stockId];
+                  const stock = getPaperSpec(stockId);
                   const selected = settings.paper === stockId;
                   return (
                     <button
@@ -1363,7 +1366,7 @@ export function SettingsBookView({
               </h3>
               <div className="mt-2.5 grid grid-cols-2 gap-2">
                 {(Object.keys(ENVIRONMENTS) as EnvironmentSurface[]).map((envId) => {
-                  const env = ENVIRONMENTS[envId];
+                  const env = getEnvironmentSpec(envId);
                   const selected = settings.environment === envId;
                   return (
                     <button

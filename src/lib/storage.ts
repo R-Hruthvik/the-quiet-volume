@@ -1,4 +1,9 @@
 import type { BookVolume, ReaderSettings } from '../types/book';
+import {
+  isValidEnvironmentSurface,
+  isValidLightingMode,
+  isValidPaperStock,
+} from './lighting';
 
 const DB_NAME = 'quiet-volume-library';
 const DB_VERSION = 1;
@@ -150,6 +155,23 @@ export async function clearAllVolumes(): Promise<void> {
   }
 }
 
+export function sanitizeSettings(settings?: Partial<ReaderSettings> | null): ReaderSettings {
+  if (!settings || typeof settings !== 'object') {
+    return { ...DEFAULT_SETTINGS };
+  }
+  const clean: ReaderSettings = { ...DEFAULT_SETTINGS, ...settings };
+  if (!isValidLightingMode(clean.lighting)) {
+    clean.lighting = DEFAULT_SETTINGS.lighting;
+  }
+  if (!isValidPaperStock(clean.paper)) {
+    clean.paper = DEFAULT_SETTINGS.paper;
+  }
+  if (!isValidEnvironmentSurface(clean.environment)) {
+    clean.environment = DEFAULT_SETTINGS.environment;
+  }
+  return clean;
+}
+
 export function loadSettings(): ReaderSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -161,22 +183,23 @@ export function loadSettings(): ReaderSettings {
       const defaultLighting = hour >= 19 || hour < 6 ? 'warm-lamp' : 'daylight';
       const defaultPageMode =
         typeof window !== 'undefined' && window.innerWidth < 960 ? 'single' : 'two-page';
-      return {
+      return sanitizeSettings({
         ...DEFAULT_SETTINGS,
         lighting: defaultLighting,
         pageMode: defaultPageMode,
         reducedMotion: Boolean(prefersReduced),
-      };
+      });
     }
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ReaderSettings>) };
+    const parsed = JSON.parse(raw);
+    return sanitizeSettings(parsed);
   } catch {
-    return DEFAULT_SETTINGS;
+    return { ...DEFAULT_SETTINGS };
   }
 }
 
 export function saveSettings(settings: ReaderSettings): void {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(sanitizeSettings(settings)));
   } catch {
     // ignore
   }
