@@ -22,7 +22,12 @@ import {
 } from '../lib/lighting';
 import { clampSpreadStart, searchBook } from '../lib/parser';
 import { playCoverCloseSound, playPaperTurnSound } from '../lib/sound';
-import { isSpeechSupported, TTS_VOICE_CATALOG } from '../lib/tts';
+import {
+  BrowserVoiceOption,
+  getBrowserSpeechVoices,
+  isSpeechSupported,
+  TTS_VOICE_CATALOG,
+} from '../lib/tts';
 import { createInitialScrollState, processViewportWheel } from '../lib/viewportScroll';
 import { ColophonMark } from './BookOrnaments';
 import type {
@@ -156,6 +161,17 @@ export function SettingsBookView({
   const [showFineSpacing, setShowFineSpacing] = useState(false);
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [availableBrowserVoices, setAvailableBrowserVoices] = useState<BrowserVoiceOption[]>([]);
+
+  useEffect(() => {
+    const updateVoices = () => {
+      setAvailableBrowserVoices(getBrowserSpeechVoices());
+    };
+    updateVoices();
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, []);
 
   const handlePlayPreview = useCallback((opt: TTSVoiceOption) => {
     if (!opt.previewUrl) return;
@@ -1619,6 +1635,10 @@ export function SettingsBookView({
                                 ? 'bg-emerald-700/15 text-emerald-900 font-semibold'
                                 : opt.provider === 'elevenlabs'
                                 ? 'bg-amber-700/15 text-amber-900 font-semibold'
+                                : opt.provider === 'fish'
+                                ? 'bg-indigo-700/15 text-indigo-900 font-semibold'
+                                : opt.provider === 'groq'
+                                ? 'bg-orange-700/15 text-orange-900 font-semibold'
                                 : 'bg-gray-500/15 text-gray-700'
                             }`}
                           >
@@ -1655,6 +1675,30 @@ export function SettingsBookView({
                   );
                 })}
               </div>
+
+              {/* Dynamic Browser Voices Dropdown when WebSpeech is chosen */}
+              {settings.ttsProvider === 'webspeech' && availableBrowserVoices.length > 0 && (
+                <div className="mt-2 rounded-[3px] border border-black/15 bg-black/[0.03] p-2 space-y-1">
+                  <div className="flex items-center justify-between font-hand-patrick text-xs font-medium">
+                    <span>Installed Browser/OS Voice:</span>
+                    <span className="text-[10px] font-book-mono opacity-60">
+                      {availableBrowserVoices.length} voices found
+                    </span>
+                  </div>
+                  <select
+                    value={settings.ttsVoice || 'edge-natural'}
+                    onChange={(e) => onUpdateSettings({ ttsVoice: e.target.value })}
+                    className="w-full rounded-[2px] border border-black/20 bg-white/70 px-2 py-1.5 font-hand-patrick text-xs text-[#2A231C]"
+                  >
+                    <option value="edge-natural">Automatic (Prefer Edge/Google Natural)</option>
+                    {availableBrowserVoices.map((v) => (
+                      <option key={v.name} value={v.name}>
+                        {v.name} ({v.lang}){v.isNatural ? ' ★ Natural' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Speech speed slider */}
               <div className="mt-2.5 flex items-center justify-between gap-3 border-t pt-2" style={{ borderColor: `${paper.ink}15` }}>

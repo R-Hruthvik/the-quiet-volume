@@ -81,6 +81,30 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     description: 'Clear, elegant narrative tone with delicate cadence shifts.',
   },
   {
+    id: 'fish-s2-pro',
+    provider: 'fish',
+    voice: 's2.1-pro-free',
+    name: 'Fish Audio S2.1 (Adrian)',
+    gender: 'Male',
+    style: 'Studio Audiobook Narration',
+    costCategory: 'Cost-Effective',
+    allowanceInfo: '50 Free Generations/Day + $1.00 Credit Active',
+    previewUrl: '',
+    description: 'Ultra-realistic studio voice with natural cadence and nuance.',
+  },
+  {
+    id: 'fish-drama-3',
+    provider: 'fish',
+    voice: 'drama-3',
+    name: 'Fish Audio Drama 3',
+    gender: 'Neutral',
+    style: 'Dramatic Character Acting',
+    costCategory: 'High-Fidelity',
+    allowanceInfo: 'Billed to $1.00 Active Free Credit',
+    previewUrl: '',
+    description: 'Dynamic character performance with stage directions & whisper tags.',
+  },
+  {
     id: 'groq-orpheus',
     provider: 'groq',
     voice: 'canopylabs/orpheus-v1-english',
@@ -372,6 +396,23 @@ export function findBestNaturalSpeechVoice(): SpeechSynthesisVoice | null {
   return voices.find((v) => v.default) || voices[0] || null;
 }
 
+export interface BrowserVoiceOption {
+  name: string;
+  lang: string;
+  default: boolean;
+  isNatural: boolean;
+}
+
+export function getBrowserSpeechVoices(): BrowserVoiceOption[] {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return [];
+  return window.speechSynthesis.getVoices().map((v) => ({
+    name: v.name,
+    lang: v.lang,
+    default: v.default,
+    isNatural: v.name.includes('Natural') || v.name.includes('Online') || v.name.includes('Enhanced'),
+  }));
+}
+
 export interface SpeakOptions {
   provider?: TTSProvider;
   voice?: string;
@@ -420,8 +461,10 @@ export async function speakSentence(
       utterance.rate = speed * 0.95;
       utterance.pitch = 1.0;
 
-      // Select best Edge Natural, Google Natural, or enhanced voice
-      const naturalVoice = findBestNaturalSpeechVoice();
+      // Select exact selected voice or best natural voice
+      const allVoices = window.speechSynthesis.getVoices();
+      const matchedVoice = voice ? allVoices.find((v) => v.name === voice) : null;
+      const naturalVoice = matchedVoice || findBestNaturalSpeechVoice();
       if (naturalVoice) {
         utterance.voice = naturalVoice;
       }

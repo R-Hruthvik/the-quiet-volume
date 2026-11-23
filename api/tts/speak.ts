@@ -72,8 +72,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const deepgramKey = (process.env.DEEPGRAM_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const elevenKey = (process.env.ELEVENLABS_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const groqKey = (process.env.GROQ_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+  const fishKey = (process.env.FISH_AUDIO_API_KEY || process.env.FISH_AUDIO || '').replace(/^["']|["']$/g, '').trim();
 
-  // 1. ElevenLabs Provider
+  // 1. Fish Audio Provider
+  if (provider === 'fish') {
+    if (!fishKey) {
+      return res.status(503).json({ error: 'Fish Audio API key not configured on server' });
+    }
+    const payload = JSON.stringify({
+      text,
+      format: 'mp3',
+      model: voice?.includes('drama') ? 'drama-3' : 's2.1-pro-free',
+    });
+
+    const upstream = https.request(
+      {
+        hostname: 'api.fish.audio',
+        port: 443,
+        path: '/v1/tts',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${fishKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (upRes) => {
+        const isOk = (upRes.statusCode || 200) < 400;
+        res.writeHead(upRes.statusCode || 200, {
+          'Content-Type': isOk ? 'audio/mpeg' : (upRes.headers['content-type'] || 'application/json'),
+          'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
+        });
+        upRes.pipe(res);
+      }
+    );
+
+    upstream.on('error', (err) => {
+      if (!res.headersSent) {
+        res.status(502).json({ error: `Upstream error: ${err.message}` });
+      }
+    });
+    upstream.write(payload);
+    upstream.end();
+    return;
+  }
+
+  // 2. ElevenLabs Provider
   if (provider === 'elevenlabs') {
     if (!elevenKey) {
       return res.status(503).json({ error: 'ElevenLabs API key not configured on server' });
