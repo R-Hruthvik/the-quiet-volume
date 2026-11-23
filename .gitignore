@@ -32,3 +32,4 @@ pnpm-debug.log*
 
 # Temporary test files
 public/test_*.mp3
+.vercel
