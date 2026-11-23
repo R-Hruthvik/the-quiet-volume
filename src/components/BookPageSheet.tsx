@@ -38,6 +38,7 @@ interface BookPageSheetProps {
   onEmptyReadingRoom: () => void;
   onJumpToToc: () => void;
   onStartReadAloud?: (pageIndex: number) => void;
+  onRecordChapter?: (sectionIndex: number) => void;
 }
 
 function getWritingHandClass(hand: ReaderSettings['writingHand']): string {
@@ -179,6 +180,7 @@ export function BookPageSheet({
   onEmptyReadingRoom,
   onJumpToToc,
   onStartReadAloud,
+  onRecordChapter,
 }: BookPageSheetProps) {
   const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id || settings?.paper);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -269,18 +271,35 @@ export function BookPageSheet({
           >
             {block.text}
           </h2>
-          {page && onStartReadAloud && (
-            <button
-              type="button"
-              onClick={() => onStartReadAloud(page.index)}
-              title="Read this chapter aloud"
-              aria-label="Read this chapter aloud"
-              className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation shrink-0"
-              style={{ color: paper.pencilInk }}
-            >
-              <span>🔊</span>
-              <span className="hidden sm:inline">Listen</span>
-            </button>
+          {page && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onRecordChapter && page.sectionIndex !== undefined && (
+                <button
+                  type="button"
+                  onClick={() => onRecordChapter(page.sectionIndex!)}
+                  title="Record full chapter as single MP3 file to disk"
+                  aria-label="Record full chapter as single MP3 file to disk"
+                  className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
+                  style={{ color: paper.pencilInk }}
+                >
+                  <span>⏺</span>
+                  <span className="hidden sm:inline">Record MP3</span>
+                </button>
+              )}
+              {onStartReadAloud && (
+                <button
+                  type="button"
+                  onClick={() => onStartReadAloud(page.index)}
+                  title="Listen to this chapter"
+                  aria-label="Listen to this chapter"
+                  className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
+                  style={{ color: paper.pencilInk }}
+                >
+                  <span>🔊</span>
+                  <span className="hidden sm:inline">Listen</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       );

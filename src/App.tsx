@@ -34,6 +34,7 @@ import {
   saveVolume,
 } from './lib/storage';
 import {
+  getPersistentAudio,
   pauseSpeaking,
   resumeSpeaking,
   speakSentence,
@@ -42,6 +43,8 @@ import {
   syncMediaSessionMetadata,
   unlockAudioOnUserGesture,
 } from './lib/tts';
+import { getChapterAudioFile } from './lib/fileSystemStorage';
+import { recordChapterAudio } from './lib/chapterRecorder';
 import type {
   BookIdentity,
   BookVolume,
@@ -633,18 +636,77 @@ export default function App() {
     [isReadingAloud]
   );
 
+  const handleRecordChapterToFile = useCallback(
+    async (sectionIndex: number) => {
+      if (!activeVolume) return;
+      unlockAudioOnUserGesture();
+      stopAllSpeech();
+      setBindNotice('Preparing chapter audio recording...');
+      const result = await recordChapterAudio(
+        activeVolume,
+        sectionIndex,
+        settings,
+        (progress) => {
+          if (progress.status === 'recording') {
+            setBindNotice(
+              `Recording "${progress.chapterTitle}": Part ${progress.currentPart}/${progress.totalParts} (${progress.percent}%)`
+            );
+          } else if (progress.status === 'stitching') {
+            setBindNotice('Stitching audio parts into single chapter MP3...');
+          } else if (progress.status === 'saving') {
+            setBindNotice('Saving single chapter MP3 to disk...');
+          } else if (progress.status === 'done') {
+            setBindNotice(`Saved ${progress.chapterTitle} MP3 to disk!`);
+            setTimeout(() => setBindNotice(null), 3500);
+          } else if (progress.status === 'error') {
+            setBindNotice(`Error recording: ${progress.errorMessage}`);
+            setTimeout(() => setBindNotice(null), 5000);
+          }
+        }
+      );
+      if (result) {
+        const audio = getPersistentAudio() || new Audio();
+        audio.src = result.url;
+        audio.playbackRate = settings.ttsSpeed || 1.0;
+        await audio.play().catch(() => {});
+        setIsReadingAloud(true);
+        setIsSpeechPaused(false);
+      }
+    },
+    [activeVolume, settings, stopAllSpeech]
+  );
+
   const handleStartSpeakingFromPage = useCallback(
-    (pageIndex: number) => {
+    async (pageIndex: number) => {
       unlockAudioOnUserGesture();
       if (!activeVolume) return;
       const targetIdx = clampSpreadStart(pageIndex, paginatedPages.length, settings.pageMode);
       setView('reading');
       handleChangePageIndex(targetIdx);
+
+      const targetPage = paginatedPages[pageIndex];
+      const sectionIdx = targetPage?.sectionIndex ?? 0;
+
+      // Check if full single chapter MP3 file exists on disk
+      const storedFile = await getChapterAudioFile(activeVolume.title, sectionIdx);
+      if (storedFile) {
+        stopAllSpeech();
+        const audio = getPersistentAudio() || new Audio();
+        audio.src = storedFile.url;
+        audio.playbackRate = settings.ttsSpeed || 1.0;
+        await audio.play().catch(() => {});
+        setIsReadingAloud(true);
+        setIsSpeechPaused(false);
+        setBindNotice(`Playing ${storedFile.file.name} from disk`);
+        setTimeout(() => setBindNotice(null), 3000);
+        return;
+      }
+
       window.setTimeout(() => {
         startSpeakingFromPage(targetIdx);
       }, 150);
     },
-    [activeVolume, paginatedPages.length, settings.pageMode, handleChangePageIndex, startSpeakingFromPage]
+    [activeVolume, paginatedPages, settings.pageMode, settings.ttsSpeed, handleChangePageIndex, startSpeakingFromPage, stopAllSpeech]
   );
 
   const handleToggleReadAloud = useCallback(() => {
@@ -778,6 +840,7 @@ export default function App() {
           onEmptyReadingRoom={handleEmptyReadingRoom}
           onToggleReadAloud={handleToggleReadAloud}
           onStartReadAloud={handleStartSpeakingFromPage}
+          onRecordChapter={handleRecordChapterToFile}
           onSkipSentence={handleSkipSentence}
           onPauseResumeSpeech={handlePauseResumeSpeech}
           onStopSpeech={stopAllSpeech}

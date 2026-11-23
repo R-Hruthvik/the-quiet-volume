@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { splitIntoSentences } from './tts';
+import { sliceTextIntoNaturalChunks } from './chapterRecorder';
+import { formatChapterFileName, sanitizeFileName } from './fileSystemStorage';
 import {
   BOOK_SIZE_ORDER,
   BOOK_SIZES,
@@ -585,4 +587,36 @@ test('splitIntoSentences preserves dialogue quotes, abbreviations, and numbers w
   const norm = splitIntoSentences('First sentence. Second sentence! Third sentence?');
   assert.deepEqual(norm, ['First sentence.', 'Second sentence!', 'Third sentence?']);
 });
+
+test('chapter audio recorder slices long text at clean paragraph and sentence boundaries', () => {
+  const p1 = 'This is the first paragraph with dialogue. "Indeed," he answered.';
+  const p2 = 'Here is the second paragraph exploring the coastline.';
+  const p3 = 'And the third paragraph watching the evening tide rise over stone.';
+  const chapterText = `${p1}\n\n${p2}\n\n${p3}`;
+
+  // Max length 120 ensures chunks split at paragraph/sentence boundaries without cutting sentences
+  const chunks = sliceTextIntoNaturalChunks(chapterText, 120);
+  assert.ok(chunks.length >= 2);
+  for (const chunk of chunks) {
+    assert.ok(chunk.length <= 120);
+    // Ensure no broken words at boundary
+    assert.ok(!chunk.startsWith(' '));
+    assert.ok(!chunk.endsWith(' '));
+  }
+  // Reconstructed content matches original paragraphs
+  assert.ok(chunks.join(' ').includes('"Indeed," he answered.'));
+});
+
+test('formatChapterFileName cleans titles and numbers chapters sequentially', () => {
+  assert.equal(
+    formatChapterFileName(0, 'The Harbor Entrance'),
+    'Chapter_01_The_Harbor_Entrance.mp3'
+  );
+  assert.equal(
+    formatChapterFileName(9, 'Act III: What Lies Ahead?'),
+    'Chapter_10_Act_III__What_Lies_Ahead_.mp3'
+  );
+  assert.equal(sanitizeFileName('invalid/name:*?"<>|'), 'invalid_name_______');
+});
+
 

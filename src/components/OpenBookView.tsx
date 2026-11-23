@@ -45,6 +45,7 @@ interface OpenBookViewProps {
   onEmptyReadingRoom: () => void;
   onToggleReadAloud: () => void;
   onStartReadAloud: (pageIndex: number) => void;
+  onRecordChapter?: (sectionIndex: number) => void;
   onSkipSentence?: (direction: 'next' | 'prev') => void;
   onPauseResumeSpeech: () => void;
   onStopSpeech: () => void;
@@ -78,6 +79,7 @@ export function OpenBookView({
   onEmptyReadingRoom,
   onToggleReadAloud,
   onStartReadAloud,
+  onRecordChapter,
   onSkipSentence,
   onPauseResumeSpeech,
   onStopSpeech,
@@ -937,6 +939,7 @@ export function OpenBookView({
                     onChangePageIndex(2);
                   }}
                   onStartReadAloud={onStartReadAloud}
+                  onRecordChapter={onRecordChapter}
                 />
               </div>
 
@@ -969,6 +972,7 @@ export function OpenBookView({
                     onChangePageIndex(2);
                   }}
                   onStartReadAloud={onStartReadAloud}
+                  onRecordChapter={onRecordChapter}
                 />
               </div>
             </div>

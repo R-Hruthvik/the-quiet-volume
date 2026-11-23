@@ -28,6 +28,11 @@ import {
   isSpeechSupported,
   TTS_VOICE_CATALOG,
 } from '../lib/tts';
+import {
+  chooseAudiobooksDirectory,
+  getStoredDirectoryHandle,
+  isFileSystemAccessSupported,
+} from '../lib/fileSystemStorage';
 import { createInitialScrollState, processViewportWheel } from '../lib/viewportScroll';
 import { ColophonMark } from './BookOrnaments';
 import type {
@@ -162,6 +167,20 @@ export function SettingsBookView({
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [availableBrowserVoices, setAvailableBrowserVoices] = useState<BrowserVoiceOption[]>([]);
+  const [audioDirName, setAudioDirName] = useState<string | null>(null);
+
+  useEffect(() => {
+    getStoredDirectoryHandle().then((h) => {
+      if (h) setAudioDirName(h.name);
+    });
+  }, []);
+
+  const handlePickAudioDir = async () => {
+    const handle = await chooseAudiobooksDirectory();
+    if (handle) {
+      setAudioDirName(handle.name);
+    }
+  };
 
   useEffect(() => {
     const updateVoices = () => {
@@ -1592,6 +1611,36 @@ export function SettingsBookView({
                     Streams fresh real-time audio on every read.
                   </span>
                 </button>
+              </div>
+            </div>
+
+            {/* Direct Local Folder Selection for Single Chapter MP3s */}
+            <div className="mt-2.5 rounded-[3px] border border-black/15 bg-black/[0.02] p-2 space-y-1.5">
+              <div className="flex items-center justify-between font-hand-patrick text-xs font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <span>📁</span> Audiobooks Folder on Disk
+                </span>
+                <span className="text-[10px] font-book-mono opacity-60">
+                  {audioDirName || 'Not selected'}
+                </span>
+              </div>
+              <p className="font-hand-patrick text-[11px] opacity-75 leading-tight">
+                Stores clean, full chapter <code>.mp3</code> files directly in your chosen folder on disk.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePickAudioDir}
+                  className="flex min-h-[36px] items-center gap-1 rounded-[2px] border border-black/20 bg-black/5 px-2.5 py-1 font-hand-kalam text-xs transition-colors hover:bg-black/10 active:bg-black/15 cursor-pointer"
+                >
+                  <span>📂</span>
+                  <span>{audioDirName ? 'Change Folder' : 'Select Folder on Disk'}</span>
+                </button>
+                {audioDirName && (
+                  <span className="font-hand-patrick text-xs text-emerald-800 flex items-center gap-1">
+                    ✓ Active
+                  </span>
+                )}
               </div>
             </div>
 
