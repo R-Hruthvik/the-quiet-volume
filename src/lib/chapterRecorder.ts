@@ -7,7 +7,12 @@
 
 import type { BookVolume, ReaderSettings, TTSProvider } from '../types/book';
 import { splitIntoSentences } from './tts';
-import { formatChapterFileName, saveChapterAudioFile } from './fileSystemStorage';
+import {
+  ChapterAudioCue,
+  ChapterAudioMetadata,
+  formatChapterFileName,
+  saveChapterAudioFile,
+} from './fileSystemStorage';
 import { saveChapterAudio } from './storage';
 
 export interface ChapterRecordingProgress {
@@ -32,6 +37,55 @@ export function getProviderMaxChunkLength(provider?: TTSProvider): number {
     default:
       return 1800; // Deepgram Aura optimal prose chunk
   }
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 3,
+  backoffMs = 1500
+): Promise<Response> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status === 429 || res.status >= 500) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+      const errText = await res.text().catch(() => '');
+      throw new Error(`TTS error ${res.status}: ${errText.slice(0, 100)}`);
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, backoffMs * attempt));
+      }
+    }
+  }
+  throw lastError || new Error('Request failed after retries');
+}
+
+async function getAudioBlobDuration(blob: Blob): Promise<number> {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return 2.0;
+  return new Promise((resolve) => {
+    try {
+      const audio = new Audio();
+      const url = URL.createObjectURL(blob);
+      audio.preload = 'metadata';
+      audio.src = url;
+      audio.onloadedmetadata = () => {
+        const d = audio.duration;
+        URL.revokeObjectURL(url);
+        resolve(isFinite(d) && d > 0 ? d : 2.0);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(2.0);
+      };
+    } catch {
+      resolve(2.0);
+    }
+  });
 }
 
 /**
@@ -113,7 +167,7 @@ export async function recordChapterAudio(
   sectionIndex: number,
   settings: ReaderSettings,
   onProgress?: (progress: ChapterRecordingProgress) => void
-): Promise<{ blob: Blob; fileName: string; url: string } | null> {
+): Promise<{ blob: Blob; fileName: string; url: string; metadata?: ChapterAudioMetadata } | null> {
   const section = volume.sections.find((s) => s.index === sectionIndex) || volume.sections[0];
   const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
 
@@ -126,8 +180,17 @@ export async function recordChapterAudio(
       b.kind !== 'chapter-title'
   );
 
-  const fullText = sectionBlocks.map((b) => b.text).join('\n\n');
-  if (!fullText.trim()) {
+  const allSentences: { blockId: string; sentenceIndex: number; text: string }[] = [];
+  for (const block of sectionBlocks) {
+    const sList = splitIntoSentences(block.text);
+    sList.forEach((st, sIdx) => {
+      if (st.trim()) {
+        allSentences.push({ blockId: block.id, sentenceIndex: sIdx, text: st.trim() });
+      }
+    });
+  }
+
+  if (allSentences.length === 0) {
     onProgress?.({
       chapterIndex: sectionIndex,
       chapterTitle,
@@ -135,7 +198,7 @@ export async function recordChapterAudio(
       totalParts: 0,
       percent: 100,
       status: 'error',
-      errorMessage: 'Chapter has no text to record.',
+      errorMessage: 'Chapter has no readable text to record.',
     });
     return null;
   }
@@ -144,7 +207,30 @@ export async function recordChapterAudio(
   const provider = settings.ttsProvider || 'deepgram';
   const voice = settings.ttsVoice || 'aura-asteria-en';
   const maxChunkLength = getProviderMaxChunkLength(provider);
-  const chunks = sliceTextIntoNaturalChunks(fullText, maxChunkLength);
+
+  interface ChapterChunkItem {
+    text: string;
+    sentences: { blockId: string; sentenceIndex: number; text: string }[];
+  }
+
+  const chunks: ChapterChunkItem[] = [];
+  let curChunkText = '';
+  let curSentences: { blockId: string; sentenceIndex: number; text: string }[] = [];
+
+  for (const s of allSentences) {
+    if (curChunkText && curChunkText.length + 1 + s.text.length > maxChunkLength) {
+      chunks.push({ text: curChunkText, sentences: curSentences });
+      curChunkText = s.text;
+      curSentences = [s];
+    } else {
+      curChunkText = curChunkText ? curChunkText + ' ' + s.text : s.text;
+      curSentences.push(s);
+    }
+  }
+  if (curChunkText) {
+    chunks.push({ text: curChunkText, sentences: curSentences });
+  }
+
   const totalParts = chunks.length;
 
   onProgress?.({
@@ -157,10 +243,12 @@ export async function recordChapterAudio(
   });
 
   const audioBlobs: Blob[] = [];
+  const cues: ChapterAudioCue[] = [];
+  let runningTimeSec = 0;
 
-  // 3. Sequentially synthesize each chunk with the exact same voice
+  // 3. Sequentially synthesize each chunk with auto-retry and audio duration cues
   for (let i = 0; i < chunks.length; i++) {
-    const chunkText = chunks[i];
+    const chunk = chunks[i];
     onProgress?.({
       chapterIndex: sectionIndex,
       chapterTitle,
@@ -171,22 +259,43 @@ export async function recordChapterAudio(
     });
 
     try {
-      const response = await fetch('/api/tts/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: chunkText,
-          provider,
-          voice,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS server responded with ${response.status}`);
-      }
+      const response = await fetchWithRetry(
+        '/api/tts/speak',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: chunk.text,
+            provider,
+            voice,
+          }),
+        },
+        3,
+        1500
+      );
 
       const chunkBlob = await response.blob();
       audioBlobs.push(chunkBlob);
+
+      // Measure duration of synthesized chunk and compute precise sentence cues
+      const chunkDur = await getAudioBlobDuration(chunkBlob);
+      const totalChars = chunk.text.length || 1;
+
+      let chunkOffset = 0;
+      for (const sent of chunk.sentences) {
+        const sentDur = (sent.text.length / totalChars) * chunkDur;
+        const startSec = runningTimeSec + chunkOffset;
+        const endSec = startSec + sentDur;
+        cues.push({
+          blockId: sent.blockId,
+          sentenceIndex: sent.sentenceIndex,
+          text: sent.text,
+          startSec,
+          endSec,
+        });
+        chunkOffset += sentDur;
+      }
+      runningTimeSec += chunkDur;
     } catch (err: any) {
       console.error(`Failed to record part ${i + 1}/${totalParts}:`, err);
       onProgress?.({
@@ -196,7 +305,7 @@ export async function recordChapterAudio(
         totalParts,
         percent: Math.round(((i + 1) / totalParts) * 85),
         status: 'error',
-        errorMessage: err.message || 'TTS synthesis failed',
+        errorMessage: err.message || 'TTS synthesis failed after retries',
       });
       return null;
     }
@@ -214,7 +323,17 @@ export async function recordChapterAudio(
 
   const finalBlob = await stitchAudioBlobs(audioBlobs);
 
-  // 5. Save directly to the user-selected folder on disk
+  const metadata: ChapterAudioMetadata = {
+    chapterIndex: sectionIndex,
+    chapterTitle,
+    totalDurationSec: runningTimeSec,
+    cues,
+    provider,
+    voice,
+    createdAt: Date.now(),
+  };
+
+  // 5. Save directly to the user-selected folder on disk & OPFS
   onProgress?.({
     chapterIndex: sectionIndex,
     chapterTitle,
@@ -228,7 +347,8 @@ export async function recordChapterAudio(
     volume.title,
     sectionIndex,
     chapterTitle,
-    finalBlob
+    finalBlob,
+    metadata
   );
 
   // Also cache in IndexedDB as backup
@@ -270,5 +390,6 @@ export async function recordChapterAudio(
     blob: finalBlob,
     fileName,
     url,
+    metadata,
   };
 }

@@ -39,6 +39,10 @@ interface BookPageSheetProps {
   onJumpToToc: () => void;
   onStartReadAloud?: (pageIndex: number) => void;
   onRecordChapter?: (sectionIndex: number) => void;
+  savedChapterIndices?: number[];
+  recordingSectionIndex?: number | null;
+  recordingProgressText?: string | null;
+  onPlayRecordedChapter?: (sectionIndex: number) => void;
 }
 
 function getWritingHandClass(hand: ReaderSettings['writingHand']): string {
@@ -181,6 +185,10 @@ export function BookPageSheet({
   onJumpToToc,
   onStartReadAloud,
   onRecordChapter,
+  savedChapterIndices,
+  recordingSectionIndex,
+  recordingProgressText,
+  onPlayRecordedChapter,
 }: BookPageSheetProps) {
   const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id || settings?.paper);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -273,31 +281,76 @@ export function BookPageSheet({
           </h2>
           {page && (
             <div className="flex items-center gap-1 shrink-0">
-              {onRecordChapter && page.sectionIndex !== undefined && (
-                <button
-                  type="button"
-                  onClick={() => onRecordChapter(page.sectionIndex!)}
-                  title="Record full chapter as single MP3 file to disk"
-                  aria-label="Record full chapter as single MP3 file to disk"
-                  className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
-                  style={{ color: paper.pencilInk }}
+              {page.sectionIndex !== undefined && recordingSectionIndex === page.sectionIndex ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-hand-kalam text-xs animate-pulse font-medium shadow-sm"
+                  style={{ color: paper.pencilInk, backgroundColor: `${paper.ink}12` }}
                 >
-                  <span>⏺</span>
-                  <span className="hidden sm:inline">Record MP3</span>
-                </button>
-              )}
-              {onStartReadAloud && (
-                <button
-                  type="button"
-                  onClick={() => onStartReadAloud(page.index)}
-                  title="Listen to this chapter"
-                  aria-label="Listen to this chapter"
-                  className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
-                  style={{ color: paper.pencilInk }}
-                >
-                  <span>🔊</span>
-                  <span className="hidden sm:inline">Listen</span>
-                </button>
+                  <span className="inline-block animate-spin text-[10px]">⏳</span>
+                  <span>{recordingProgressText || 'Converting...'}</span>
+                </span>
+              ) : page.sectionIndex !== undefined && savedChapterIndices?.includes(page.sectionIndex) ? (
+                <>
+                  {onPlayRecordedChapter && (
+                    <button
+                      type="button"
+                      onClick={() => onPlayRecordedChapter(page.sectionIndex!)}
+                      title="Play full chapter audio (with live sentence highlighting)"
+                      aria-label="Play full chapter audio"
+                      className="flex min-h-[36px] items-center gap-1.5 rounded-full px-2.5 py-1 font-hand-kalam text-xs font-medium border transition-all cursor-pointer touch-manipulation hover:scale-105 active:scale-95 shadow-sm"
+                      style={{
+                        color: paper.ink,
+                        borderColor: `${paper.ink}35`,
+                        backgroundColor: `${paper.ink}12`,
+                      }}
+                    >
+                      <span>🎧</span>
+                      <span>Play Audio</span>
+                    </button>
+                  )}
+                  {onRecordChapter && (
+                    <button
+                      type="button"
+                      onClick={() => onRecordChapter(page.sectionIndex!)}
+                      title="Re-record chapter MP3"
+                      aria-label="Re-record chapter MP3"
+                      className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-50 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
+                      style={{ color: paper.pencilInk }}
+                    >
+                      <span>⏺</span>
+                      <span className="hidden sm:inline">Re-record</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  {onRecordChapter && page.sectionIndex !== undefined && (
+                    <button
+                      type="button"
+                      onClick={() => onRecordChapter(page.sectionIndex!)}
+                      title="Record full chapter as single MP3 file to disk"
+                      aria-label="Record full chapter as single MP3 file to disk"
+                      className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
+                      style={{ color: paper.pencilInk }}
+                    >
+                      <span>⏺</span>
+                      <span className="hidden sm:inline">Record MP3</span>
+                    </button>
+                  )}
+                  {onStartReadAloud && (
+                    <button
+                      type="button"
+                      onClick={() => onStartReadAloud(page.index)}
+                      title="Listen to this chapter"
+                      aria-label="Listen to this chapter"
+                      className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation"
+                      style={{ color: paper.pencilInk }}
+                    >
+                      <span>🔊</span>
+                      <span className="hidden sm:inline">Listen</span>
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -768,6 +821,7 @@ export function BookPageSheet({
             isCollection={volume.isCollection}
             paper={paper}
             handClass={handClass}
+            savedChapterIndices={savedChapterIndices}
             onSelectPageNumber={onSelectTocPage}
             onStartReadAloud={onStartReadAloud}
           />

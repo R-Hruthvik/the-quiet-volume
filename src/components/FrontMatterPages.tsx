@@ -273,6 +273,7 @@ interface TocPageProps {
   isCollection: boolean;
   paper?: PaperSpec;
   handClass: string;
+  savedChapterIndices?: number[];
   onSelectPageNumber: (pageNumber: number) => void;
   onStartReadAloud?: (pageNumber: number) => void;
 }
@@ -282,6 +283,7 @@ export function TocPage({
   isCollection,
   paper: rawPaper,
   handClass,
+  savedChapterIndices,
   onSelectPageNumber,
   onStartReadAloud,
 }: TocPageProps) {
@@ -350,8 +352,17 @@ export function TocPage({
                   onClick={() => onSelectPageNumber(entry.pageNumber)}
                   className="group flex flex-1 items-baseline justify-between gap-3 text-left transition-opacity hover:opacity-70 cursor-pointer min-w-0"
                 >
-                  <span className={`${handClass} text-[15px] sm:text-[16px] leading-snug truncate`}>
+                  <span className={`${handClass} text-[15px] sm:text-[16px] leading-snug truncate flex items-center gap-1.5`}>
                     {entry.title}
+                    {savedChapterIndices?.includes(entry.sectionIndex) && (
+                      <span
+                        title="Full chapter audio ready"
+                        aria-label="Full chapter audio ready"
+                        className="inline-flex items-center text-xs opacity-80"
+                      >
+                        🎧
+                      </span>
+                    )}
                   </span>
                   <span
                     aria-hidden="true"

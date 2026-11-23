@@ -10,6 +10,19 @@ const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 40;
 
+function logTTS(event: 'tts_start' | 'tts_success' | 'tts_error' | 'tts_rate_limited', data: Record<string, any>) {
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    event,
+    ...data,
+  });
+  if (event === 'tts_error') {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+}
+
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
   const timestamps = (rateLimitMap.get(ip) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
@@ -46,6 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const forwardedFor = req.headers['x-forwarded-for'];
   const clientIp = Array.isArray(forwardedFor) ? forwardedFor[0] : (typeof forwardedFor === 'string' ? forwardedFor.split(',')[0].trim() : (req.socket?.remoteAddress || 'unknown'));
   if (!checkRateLimit(clientIp)) {
+    logTTS('tts_rate_limited', { clientIp });
     res.setHeader('Retry-After', '60');
     return res.status(429).json({ error: 'Rate limit exceeded. Please wait 60 seconds.' });
   }
@@ -69,6 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Text exceeds maximum limit of 1,500 characters per request' });
   }
 
+  const startTime = Date.now();
   const deepgramKey = (process.env.DEEPGRAM_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const elevenKey = (process.env.ELEVENLABS_API_KEY || '').replace(/^["']|["']$/g, '').trim();
   const groqKey = (process.env.GROQ_API_KEY || '').replace(/^["']|["']$/g, '').trim();
@@ -99,6 +114,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       (upRes) => {
         const isOk = (upRes.statusCode || 200) < 400;
+        logTTS(isOk ? 'tts_success' : 'tts_error', {
+          provider: 'fish',
+          status: upRes.statusCode || 200,
+          latencyMs: Date.now() - startTime,
+          textLen: text.length,
+        });
         res.writeHead(upRes.statusCode || 200, {
           'Content-Type': isOk ? 'audio/mpeg' : (upRes.headers['content-type'] || 'application/json'),
           'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
@@ -108,6 +129,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     upstream.on('error', (err) => {
+      logTTS('tts_error', { provider: 'fish', error: err.message, latencyMs: Date.now() - startTime });
       if (!res.headersSent) {
         res.status(502).json({ error: `Upstream error: ${err.message}` });
       }
@@ -143,6 +165,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       (upRes) => {
         const isOk = (upRes.statusCode || 200) < 400;
+        logTTS(isOk ? 'tts_success' : 'tts_error', {
+          provider: 'elevenlabs',
+          voice: voiceId,
+          status: upRes.statusCode || 200,
+          latencyMs: Date.now() - startTime,
+          textLen: text.length,
+        });
         res.writeHead(upRes.statusCode || 200, {
           'Content-Type': isOk ? 'audio/mpeg' : (upRes.headers['content-type'] || 'application/json'),
           'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
@@ -152,6 +181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     upstream.on('error', (err) => {
+      logTTS('tts_error', { provider: 'elevenlabs', error: err.message, latencyMs: Date.now() - startTime });
       if (!res.headersSent) {
         res.status(502).json({ error: `Upstream error: ${err.message}` });
       }
@@ -188,6 +218,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       (upRes) => {
         const isOk = (upRes.statusCode || 200) < 400;
+        logTTS(isOk ? 'tts_success' : 'tts_error', {
+          provider: 'groq',
+          model,
+          status: upRes.statusCode || 200,
+          latencyMs: Date.now() - startTime,
+          textLen: text.length,
+        });
         res.writeHead(upRes.statusCode || 200, {
           'Content-Type': isOk ? 'audio/wav' : (upRes.headers['content-type'] || 'application/json'),
           'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
@@ -197,6 +234,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     upstream.on('error', (err) => {
+      logTTS('tts_error', { provider: 'groq', error: err.message, latencyMs: Date.now() - startTime });
       if (!res.headersSent) {
         res.status(502).json({ error: `Upstream error: ${err.message}` });
       }
@@ -228,6 +266,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     },
     (upRes) => {
       const isOk = (upRes.statusCode || 200) < 400;
+      logTTS(isOk ? 'tts_success' : 'tts_error', {
+        provider: 'deepgram',
+        model,
+        status: upRes.statusCode || 200,
+        latencyMs: Date.now() - startTime,
+        textLen: text.length,
+      });
       res.writeHead(upRes.statusCode || 200, {
         'Content-Type': isOk ? 'audio/mpeg' : (upRes.headers['content-type'] || 'application/json'),
         'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
@@ -237,6 +282,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   );
 
   upstream.on('error', (err) => {
+    logTTS('tts_error', { provider: 'deepgram', error: err.message, latencyMs: Date.now() - startTime });
     if (!res.headersSent) {
       res.status(502).json({ error: `Upstream error: ${err.message}` });
     }

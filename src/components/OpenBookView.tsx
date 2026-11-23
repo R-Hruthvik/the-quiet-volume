@@ -46,6 +46,10 @@ interface OpenBookViewProps {
   onToggleReadAloud: () => void;
   onStartReadAloud: (pageIndex: number) => void;
   onRecordChapter?: (sectionIndex: number) => void;
+  savedChapterIndices?: number[];
+  recordingSectionIndex?: number | null;
+  recordingProgressText?: string | null;
+  onPlayRecordedChapter?: (sectionIndex: number) => void;
   onSkipSentence?: (direction: 'next' | 'prev') => void;
   onPauseResumeSpeech: () => void;
   onStopSpeech: () => void;
@@ -80,6 +84,10 @@ export function OpenBookView({
   onToggleReadAloud,
   onStartReadAloud,
   onRecordChapter,
+  savedChapterIndices,
+  recordingSectionIndex,
+  recordingProgressText,
+  onPlayRecordedChapter,
   onSkipSentence,
   onPauseResumeSpeech,
   onStopSpeech,
@@ -940,6 +948,10 @@ export function OpenBookView({
                   }}
                   onStartReadAloud={onStartReadAloud}
                   onRecordChapter={onRecordChapter}
+                  savedChapterIndices={savedChapterIndices}
+                  recordingSectionIndex={recordingSectionIndex}
+                  recordingProgressText={recordingProgressText}
+                  onPlayRecordedChapter={onPlayRecordedChapter}
                 />
               </div>
 
@@ -973,6 +985,10 @@ export function OpenBookView({
                   }}
                   onStartReadAloud={onStartReadAloud}
                   onRecordChapter={onRecordChapter}
+                  savedChapterIndices={savedChapterIndices}
+                  recordingSectionIndex={recordingSectionIndex}
+                  recordingProgressText={recordingProgressText}
+                  onPlayRecordedChapter={onPlayRecordedChapter}
                 />
               </div>
             </div>

@@ -43,7 +43,7 @@ import {
   syncMediaSessionMetadata,
   unlockAudioOnUserGesture,
 } from './lib/tts';
-import { getChapterAudioFile } from './lib/fileSystemStorage';
+import { getChapterAudioFile, listSavedChapterAudioFiles } from './lib/fileSystemStorage';
 import { recordChapterAudio } from './lib/chapterRecorder';
 import type {
   BookIdentity,
@@ -83,11 +83,31 @@ export default function App() {
     blockId: string;
     sentenceIndex: number;
   } | null>(null);
+  const [savedChapterIndices, setSavedChapterIndices] = useState<number[]>([]);
+  const [recordingSectionIndex, setRecordingSectionIndex] = useState<number | null>(null);
+  const [recordingProgressText, setRecordingProgressText] = useState<string | null>(null);
 
   const speechSessionRef = useRef(0);
   const queueCursorRef = useRef(0);
   const queueRef = useRef<{ blockId: string; sentenceIndex: number; text: string }[]>([]);
   const currentSpeakNextRef = useRef<(() => void) | null>(null);
+
+  // Sync saved chapter audio files on disk / OPFS whenever active book changes
+  useEffect(() => {
+    if (!activeVolume) {
+      setSavedChapterIndices([]);
+      return;
+    }
+    let isCurrent = true;
+    listSavedChapterAudioFiles(activeVolume.title).then((indices) => {
+      if (isCurrent) {
+        setSavedChapterIndices(indices);
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeVolume?.id, activeVolume?.title]);
 
   // Load persisted volumes (or seed quiet starter volumes on first visit)
   useEffect(() => {
@@ -641,30 +661,46 @@ export default function App() {
       if (!activeVolume) return;
       unlockAudioOnUserGesture();
       stopAllSpeech();
+      setRecordingSectionIndex(sectionIndex);
+      setRecordingProgressText('Preparing...');
       setBindNotice('Preparing chapter audio recording...');
+
       const result = await recordChapterAudio(
         activeVolume,
         sectionIndex,
         settings,
         (progress) => {
-          if (progress.status === 'recording') {
+          if (progress.status === 'slicing') {
+            setRecordingProgressText('Slicing...');
+          } else if (progress.status === 'recording') {
+            const txt = `${progress.percent}% (${progress.currentPart}/${progress.totalParts})`;
+            setRecordingProgressText(txt);
             setBindNotice(
               `Recording "${progress.chapterTitle}": Part ${progress.currentPart}/${progress.totalParts} (${progress.percent}%)`
             );
           } else if (progress.status === 'stitching') {
+            setRecordingProgressText('Stitching...');
             setBindNotice('Stitching audio parts into single chapter MP3...');
           } else if (progress.status === 'saving') {
+            setRecordingProgressText('Saving...');
             setBindNotice('Saving single chapter MP3 to disk...');
           } else if (progress.status === 'done') {
+            setRecordingSectionIndex(null);
+            setRecordingProgressText(null);
             setBindNotice(`Saved ${progress.chapterTitle} MP3 to disk!`);
             setTimeout(() => setBindNotice(null), 3500);
+            listSavedChapterAudioFiles(activeVolume.title).then(setSavedChapterIndices);
           } else if (progress.status === 'error') {
+            setRecordingSectionIndex(null);
+            setRecordingProgressText(null);
             setBindNotice(`Error recording: ${progress.errorMessage}`);
-            setTimeout(() => setBindNotice(null), 5000);
+            setTimeout(() => setBindNotice(null), 6000);
           }
         }
       );
+
       if (result) {
+        listSavedChapterAudioFiles(activeVolume.title).then(setSavedChapterIndices);
         const audio = getPersistentAudio() || new Audio();
         audio.src = result.url;
         audio.playbackRate = settings.ttsSpeed || 1.0;
@@ -674,6 +710,74 @@ export default function App() {
       }
     },
     [activeVolume, settings, stopAllSpeech]
+  );
+
+  const handlePlayRecordedChapter = useCallback(
+    async (sectionIndex: number) => {
+      if (!activeVolume) return;
+      unlockAudioOnUserGesture();
+      stopAllSpeech();
+
+      const chapterFile = await getChapterAudioFile(activeVolume.title, sectionIndex);
+      if (!chapterFile) {
+        setBindNotice('Audio file not found on disk. Please re-record chapter.');
+        setTimeout(() => setBindNotice(null), 3500);
+        return;
+      }
+
+      const sessionId = ++speechSessionRef.current;
+      const audio = getPersistentAudio() || new Audio();
+      audio.src = chapterFile.url;
+      audio.playbackRate = settings.ttsSpeed || 1.0;
+
+      const section = activeVolume.sections.find((s) => s.index === sectionIndex);
+      const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
+
+      syncMediaSessionMetadata(
+        `${activeVolume.title} - ${chapterTitle}`,
+        activeVolume.author || 'The Quiet Volume',
+        () => {
+          audio.play().catch(() => {});
+          setIsSpeechPaused(false);
+        },
+        () => {
+          audio.pause();
+          setIsSpeechPaused(true);
+        }
+      );
+
+      const cues = chapterFile.metadata?.cues || [];
+
+      audio.ontimeupdate = () => {
+        if (speechSessionRef.current !== sessionId) return;
+        const curTime = audio.currentTime;
+        const matched = cues.find((c) => curTime >= c.startSec && curTime < c.endSec);
+        if (matched) {
+          setActiveSpeechCue({ blockId: matched.blockId, sentenceIndex: matched.sentenceIndex });
+        }
+      };
+
+      audio.onended = () => {
+        if (speechSessionRef.current === sessionId) {
+          setActiveSpeechCue(null);
+          setIsReadingAloud(false);
+          setIsSpeechPaused(false);
+        }
+      };
+
+      audio.onerror = () => {
+        if (speechSessionRef.current === sessionId) {
+          setActiveSpeechCue(null);
+          setIsReadingAloud(false);
+          setIsSpeechPaused(false);
+        }
+      };
+
+      await audio.play().catch(() => {});
+      setIsReadingAloud(true);
+      setIsSpeechPaused(false);
+    },
+    [activeVolume, settings.ttsSpeed, stopAllSpeech]
   );
 
   const handleStartSpeakingFromPage = useCallback(
@@ -841,6 +945,10 @@ export default function App() {
           onToggleReadAloud={handleToggleReadAloud}
           onStartReadAloud={handleStartSpeakingFromPage}
           onRecordChapter={handleRecordChapterToFile}
+          savedChapterIndices={savedChapterIndices}
+          recordingSectionIndex={recordingSectionIndex}
+          recordingProgressText={recordingProgressText}
+          onPlayRecordedChapter={handlePlayRecordedChapter}
           onSkipSentence={handleSkipSentence}
           onPauseResumeSpeech={handlePauseResumeSpeech}
           onStopSpeech={stopAllSpeech}

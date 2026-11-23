@@ -74,6 +74,38 @@ export async function getStoredDirectoryHandle(): Promise<FileSystemDirectoryHan
   });
 }
 
+export interface ChapterAudioCue {
+  blockId: string;
+  sentenceIndex: number;
+  text: string;
+  startSec: number;
+  endSec: number;
+}
+
+export interface ChapterAudioMetadata {
+  chapterIndex: number;
+  chapterTitle: string;
+  totalDurationSec: number;
+  cues: ChapterAudioCue[];
+  provider?: string;
+  voice?: string;
+  createdAt: number;
+}
+
+export function isOpfsSupported(): boolean {
+  return typeof navigator !== 'undefined' && !!navigator.storage && typeof navigator.storage.getDirectory === 'function';
+}
+
+export async function getOpfsAudiobooksDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  if (!isOpfsSupported()) return null;
+  try {
+    const root = await navigator.storage.getDirectory();
+    return await root.getDirectoryHandle('Audiobooks', { create: true });
+  } catch {
+    return null;
+  }
+}
+
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
@@ -122,71 +154,136 @@ export async function saveChapterAudioFile(
   bookTitle: string,
   chapterIndex: number,
   chapterTitle: string,
-  audioBlob: Blob
+  audioBlob: Blob,
+  metadata?: ChapterAudioMetadata
 ): Promise<string | null> {
-  let root = await getStoredDirectoryHandle();
-  if (!root) {
-    root = await chooseAudiobooksDirectory();
-  }
-  if (!root) return null;
+  let savedPath: string | null = null;
+  const fileName = formatChapterFileName(chapterIndex, chapterTitle);
+  const jsonName = fileName.replace(/\.mp3$/, '.json');
 
+  // 1. Save to OPFS dedicated directory (Mobile & Desktop native private disk)
   try {
-    const hasPerm = await verifyPermission(root);
-    if (!hasPerm) return null;
+    const opfsRoot = await getOpfsAudiobooksDirectory();
+    if (opfsRoot) {
+      const bookDir = await getOrCreateBookSubdirectory(opfsRoot, bookTitle);
+      const fileHandle = await bookDir.getFileHandle(fileName, { create: true });
+      const writable = await (fileHandle as any).createWritable();
+      await writable.write(audioBlob);
+      await writable.close();
 
-    const bookDir = await getOrCreateBookSubdirectory(root, bookTitle);
-    const fileName = formatChapterFileName(chapterIndex, chapterTitle);
-    const fileHandle = await bookDir.getFileHandle(fileName, { create: true });
-    const writable = await (fileHandle as any).createWritable();
-    await writable.write(audioBlob);
-    await writable.close();
-    return `${bookDir.name}/${fileName}`;
+      if (metadata) {
+        const jsonHandle = await bookDir.getFileHandle(jsonName, { create: true });
+        const jsonWritable = await (jsonHandle as any).createWritable();
+        await jsonWritable.write(JSON.stringify(metadata, null, 2));
+        await jsonWritable.close();
+      }
+
+      savedPath = `Audiobooks/${bookDir.name}/${fileName}`;
+    }
   } catch (err) {
-    console.error('Error saving chapter audio file to disk:', err);
-    return null;
+    console.warn('OPFS save warning:', err);
   }
+
+  // 2. Also save to user-selected external folder if configured
+  try {
+    const externalRoot = await getStoredDirectoryHandle();
+    if (externalRoot) {
+      const hasPerm = await verifyPermission(externalRoot);
+      if (hasPerm) {
+        const bookDir = await getOrCreateBookSubdirectory(externalRoot, bookTitle);
+        const fileHandle = await bookDir.getFileHandle(fileName, { create: true });
+        const writable = await (fileHandle as any).createWritable();
+        await writable.write(audioBlob);
+        await writable.close();
+
+        if (metadata) {
+          const jsonHandle = await bookDir.getFileHandle(jsonName, { create: true });
+          const jsonWritable = await (jsonHandle as any).createWritable();
+          await jsonWritable.write(JSON.stringify(metadata, null, 2));
+          await jsonWritable.close();
+        }
+
+        savedPath = `${bookDir.name}/${fileName}`;
+      }
+    }
+  } catch (err) {
+    console.warn('External directory save warning:', err);
+  }
+
+  return savedPath;
 }
 
 export async function getChapterAudioFile(
   bookTitle: string,
   chapterIndex: number,
   chapterTitle?: string
-): Promise<{ file: File; url: string } | null> {
-  const root = await getStoredDirectoryHandle();
-  if (!root) return null;
+): Promise<{ file: File; url: string; metadata?: ChapterAudioMetadata } | null> {
+  const padded = String(chapterIndex + 1).padStart(2, '0');
+  const prefix = `Chapter_${padded}`;
+  const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
 
-  try {
-    const hasPerm = await verifyPermission(root);
-    if (!hasPerm) return null;
+  // Helper to extract file and metadata from a directory handle
+  const tryReadFromDir = async (
+    rootHandle: FileSystemDirectoryHandle
+  ): Promise<{ file: File; url: string; metadata?: ChapterAudioMetadata } | null> => {
+    try {
+      const bookDir = await rootHandle.getDirectoryHandle(dirName, { create: false }).catch(() => null);
+      if (!bookDir) return null;
 
-    const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
-    const bookDir = await root.getDirectoryHandle(dirName, { create: false });
-
-    // Look for file starting with `Chapter_${padded}`
-    const padded = String(chapterIndex + 1).padStart(2, '0');
-    const prefix = `Chapter_${padded}`;
-
-    let targetHandle: FileSystemFileHandle | null = null;
-    for await (const [name, handle] of (bookDir as any).entries()) {
-      if (handle.kind === 'file' && name.startsWith(prefix) && name.endsWith('.mp3')) {
-        targetHandle = handle;
-        break;
+      let targetHandle: FileSystemFileHandle | null = null;
+      let targetName = '';
+      for await (const [name, handle] of (bookDir as any).entries()) {
+        if (handle.kind === 'file' && name.startsWith(prefix) && name.endsWith('.mp3')) {
+          targetHandle = handle;
+          targetName = name;
+          break;
+        }
       }
+
+      if (!targetHandle && chapterTitle) {
+        const explicitName = formatChapterFileName(chapterIndex, chapterTitle);
+        targetHandle = await bookDir.getFileHandle(explicitName, { create: false }).catch(() => null);
+        targetName = explicitName;
+      }
+
+      if (!targetHandle) return null;
+
+      const file = await targetHandle.getFile();
+      const url = URL.createObjectURL(file);
+
+      // Attempt to read metadata sidecar
+      let metadata: ChapterAudioMetadata | undefined;
+      try {
+        const jsonName = targetName.replace(/\.mp3$/, '.json');
+        const jsonHandle = await bookDir.getFileHandle(jsonName, { create: false }).catch(() => null);
+        if (jsonHandle) {
+          const jsonFile = await jsonHandle.getFile();
+          const jsonText = await jsonFile.text();
+          metadata = JSON.parse(jsonText);
+        }
+      } catch {}
+
+      return { file, url, metadata };
+    } catch {
+      return null;
     }
+  };
 
-    if (!targetHandle && chapterTitle) {
-      const explicitName = formatChapterFileName(chapterIndex, chapterTitle);
-      targetHandle = await bookDir.getFileHandle(explicitName, { create: false }).catch(() => null);
-    }
-
-    if (!targetHandle) return null;
-
-    const file = await targetHandle.getFile();
-    const url = URL.createObjectURL(file);
-    return { file, url };
-  } catch {
-    return null;
+  // 1. Try external directory first
+  const externalRoot = await getStoredDirectoryHandle();
+  if (externalRoot) {
+    const res = await tryReadFromDir(externalRoot);
+    if (res) return res;
   }
+
+  // 2. Try OPFS dedicated directory
+  const opfsRoot = await getOpfsAudiobooksDirectory();
+  if (opfsRoot) {
+    const res = await tryReadFromDir(opfsRoot);
+    if (res) return res;
+  }
+
+  return null;
 }
 
 export async function hasChapterAudioFile(
@@ -198,33 +295,34 @@ export async function hasChapterAudioFile(
 }
 
 export async function listSavedChapterAudioFiles(bookTitle: string): Promise<number[]> {
-  const root = await getStoredDirectoryHandle();
-  if (!root) return [];
+  const result: number[] = [];
+  const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
 
-  try {
-    const hasPerm = await verifyPermission(root);
-    if (!hasPerm) return [];
-
-    const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
-    const bookDir = await root.getDirectoryHandle(dirName, { create: false }).catch(() => null);
-    if (!bookDir) return [];
-
-    const result: number[] = [];
-    for await (const [name, handle] of (bookDir as any).entries()) {
-      if (handle.kind === 'file' && name.startsWith('Chapter_') && name.endsWith('.mp3')) {
-        const match = name.match(/^Chapter_(\d+)/);
-        if (match) {
-          const chIdx = parseInt(match[1], 10) - 1;
-          if (!isNaN(chIdx) && !result.includes(chIdx)) {
-            result.push(chIdx);
+  const scanDir = async (rootHandle: FileSystemDirectoryHandle) => {
+    try {
+      const bookDir = await rootHandle.getDirectoryHandle(dirName, { create: false }).catch(() => null);
+      if (!bookDir) return;
+      for await (const [name, handle] of (bookDir as any).entries()) {
+        if (handle.kind === 'file' && name.startsWith('Chapter_') && name.endsWith('.mp3')) {
+          const match = name.match(/^Chapter_(\d+)/);
+          if (match) {
+            const chIdx = parseInt(match[1], 10) - 1;
+            if (!isNaN(chIdx) && !result.includes(chIdx)) {
+              result.push(chIdx);
+            }
           }
         }
       }
-    }
-    return result;
-  } catch {
-    return [];
-  }
+    } catch {}
+  };
+
+  const externalRoot = await getStoredDirectoryHandle();
+  if (externalRoot) await scanDir(externalRoot);
+
+  const opfsRoot = await getOpfsAudiobooksDirectory();
+  if (opfsRoot) await scanDir(opfsRoot);
+
+  return result.sort((a, b) => a - b);
 }
 
 async function verifyPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
