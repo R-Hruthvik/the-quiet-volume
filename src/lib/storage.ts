@@ -94,6 +94,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   ttsProvider: 'deepgram',
   ttsVoice: 'aura-asteria-en',
   ttsSpeed: 1.0,
+  ttsAudioMode: 'recorded',
 };
 
 function openDb(): Promise<IDBDatabase | null> {
@@ -203,6 +204,73 @@ export async function deleteVolumeAudio(volumeId: string): Promise<void> {
       tx.onerror = () => resolve();
     } catch {
       resolve();
+    }
+  });
+}
+
+export async function saveAudioBlob(
+  id: string,
+  volumeId: string,
+  blob: Blob,
+  meta?: { sectionIndex?: number; sectionTitle?: string; provider?: string; voice?: string }
+): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readwrite');
+      tx.objectStore(STORE_CHAPTER_AUDIO).put({
+        id,
+        volumeId: volumeId || 'global',
+        sectionIndex: meta?.sectionIndex ?? -1,
+        sectionTitle: meta?.sectionTitle ?? '',
+        audioBlob: blob,
+        mimeType: blob.type || 'audio/mpeg',
+        provider: meta?.provider || 'default',
+        voice: meta?.voice || '',
+        createdAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export async function loadAudioBlob(id: string): Promise<Blob | null> {
+  const db = await openDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readonly');
+      const req = tx.objectStore(STORE_CHAPTER_AUDIO).get(id);
+      req.onsuccess = () => {
+        const record = req.result as ChapterAudioRecord | undefined;
+        resolve(record?.audioBlob || null);
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function countVolumeAudio(volumeId: string): Promise<number> {
+  const db = await openDb();
+  if (!db) return 0;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readonly');
+      const store = tx.objectStore(STORE_CHAPTER_AUDIO);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const records = (req.result as ChapterAudioRecord[]) || [];
+        resolve(records.filter((r) => r.volumeId === volumeId).length);
+      };
+      req.onerror = () => resolve(0);
+    } catch {
+      resolve(0);
     }
   });
 }

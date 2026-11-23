@@ -1,4 +1,5 @@
-import type { TTSProvider, TTSVoiceOption } from '../types/book';
+import type { TTSAudioMode, TTSProvider, TTSVoiceOption } from '../types/book';
+import { loadAudioBlob, saveAudioBlob } from './storage';
 
 export interface SentenceCue {
   blockId: string;
@@ -78,6 +79,18 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     allowanceInfo: '10,000 Characters Free Every Month (Recurring free tier)',
     previewUrl: '/samples/elevenlabs_alice.mp3',
     description: 'Clear, elegant narrative tone with delicate cadence shifts.',
+  },
+  {
+    id: 'webspeech-edge-natural',
+    provider: 'webspeech',
+    voice: 'edge-natural',
+    name: 'Edge Natural / OS Neural Voice',
+    gender: 'Neutral',
+    style: 'Natural Browser Synthesizer',
+    costCategory: 'Device Default',
+    allowanceInfo: 'Completely Offline & Unlimited (Zero API calls)',
+    previewUrl: '',
+    description: 'Uses Edge Online Natural or Google/Apple neural voices without API keys.',
   },
   {
     id: 'webspeech-default',
@@ -310,12 +323,51 @@ export function resumeSpeaking(): void {
   }
 }
 
+export function findBestNaturalSpeechVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  // 1. Edge Online / Natural voices (highest quality neural browser voices)
+  const edgeNatural = voices.find(
+    (v) => (v.name.includes('Natural') || v.name.includes('Online')) && v.lang.startsWith('en')
+  );
+  if (edgeNatural) return edgeNatural;
+
+  // 2. Google US / UK English natural voices
+  const googleNatural = voices.find(
+    (v) => (v.name.includes('Google') || v.name.includes('Natural')) && v.lang.startsWith('en')
+  );
+  if (googleNatural) return googleNatural;
+
+  // 3. Apple Enhanced / Siri voices
+  const appleEnhanced = voices.find(
+    (v) =>
+      (v.name.includes('Enhanced') ||
+        v.name.includes('Siri') ||
+        v.name.includes('Samantha') ||
+        v.name.includes('Daniel') ||
+        v.name.includes('Karen')) &&
+      v.lang.startsWith('en')
+  );
+  if (appleEnhanced) return appleEnhanced;
+
+  // 4. Any English voice
+  const anyEnglish = voices.find((v) => v.lang.startsWith('en'));
+  if (anyEnglish) return anyEnglish;
+
+  // 5. Default
+  return voices.find((v) => v.default) || voices[0] || null;
+}
+
 export interface SpeakOptions {
   provider?: TTSProvider;
   voice?: string;
   speed?: number;
   title?: string;
   author?: string;
+  volumeId?: string;
+  audioMode?: TTSAudioMode; // 'recorded' (default) or 'live'
   onPlay?: () => void;
   onPause?: () => void;
 }
@@ -335,6 +387,7 @@ export async function speakSentence(
   const provider = options.provider || 'deepgram';
   const voice = options.voice || 'aura-asteria-en';
   const speed = options.speed || 1.0;
+  const audioMode = options.audioMode || 'recorded'; // Default is recorded/cached
 
   syncMediaSessionMetadata(
     options.title || trimmed.slice(0, 40),
@@ -343,7 +396,7 @@ export async function speakSentence(
     options.onPause
   );
 
-  // WebSpeech Fallback
+  // WebSpeech Fallback / Native mode
   if (provider === 'webspeech') {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       onError?.();
@@ -354,6 +407,13 @@ export async function speakSentence(
       const utterance = new SpeechSynthesisUtterance(trimmed);
       utterance.rate = speed * 0.95;
       utterance.pitch = 1.0;
+
+      // Select best Edge Natural, Google Natural, or enhanced voice
+      const naturalVoice = findBestNaturalSpeechVoice();
+      if (naturalVoice) {
+        utterance.voice = naturalVoice;
+      }
+
       utterance.onend = () => {
         if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
           try {
@@ -380,6 +440,16 @@ export async function speakSentence(
   let audioUrl = getCachedAudio(cacheKey);
 
   try {
+    // 1. If in Recorded mode (default) and not yet in memory, check persistent IndexedDB
+    if (!audioUrl && audioMode !== 'live') {
+      const persistedBlob = await loadAudioBlob(cacheKey);
+      if (persistedBlob) {
+        audioUrl = URL.createObjectURL(persistedBlob);
+        setCachedAudio(cacheKey, audioUrl);
+      }
+    }
+
+    // 2. If still no audio, fetch from live API
     if (!audioUrl) {
       const response = await fetch('/api/tts/speak', {
         method: 'POST',
@@ -398,6 +468,11 @@ export async function speakSentence(
       const blob = await response.blob();
       audioUrl = URL.createObjectURL(blob);
       setCachedAudio(cacheKey, audioUrl);
+
+      // Record audio into persistent IndexedDB so all future replays are free & offline
+      if (audioMode !== 'live') {
+        saveAudioBlob(cacheKey, options.volumeId || 'global', blob, { provider, voice }).catch(() => {});
+      }
     }
 
     stopSpeaking();
@@ -418,8 +493,8 @@ export async function speakSentence(
       if (currentAudio === audio) {
         currentAudio = null;
       }
-      // Fallback to WebSpeech on audio playback error
-      speakSentence(trimmed, { provider: 'webspeech', speed }, onEnd, onError);
+      // Fallback to WebSpeech with high-quality natural voice on audio error
+      speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
     };
 
     await audio.play();
@@ -429,7 +504,7 @@ export async function speakSentence(
       } catch {}
     }
   } catch (err) {
-    // If network or API fails, smoothly fallback to WebSpeech
-    speakSentence(trimmed, { provider: 'webspeech', speed }, onEnd, onError);
+    // If network or API fails, smoothly fallback to WebSpeech with natural voice
+    speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
   }
 }

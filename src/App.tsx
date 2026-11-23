@@ -593,6 +593,8 @@ export default function App() {
             provider: settings.ttsProvider,
             voice: settings.ttsVoice,
             speed: settings.ttsSpeed,
+            volumeId: activeVolume.id,
+            audioMode: settings.ttsAudioMode || 'recorded',
           },
           speakNext,
           () => stopAllSpeech()
@@ -611,6 +613,7 @@ export default function App() {
       settings.ttsProvider,
       settings.ttsVoice,
       settings.ttsSpeed,
+      settings.ttsAudioMode,
       handleChangePageIndex,
       stopAllSpeech,
     ]

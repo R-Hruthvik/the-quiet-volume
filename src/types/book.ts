@@ -163,6 +163,7 @@ export type EnvironmentSurface =
   | 'dark-space';
 
 export type TTSProvider = 'deepgram' | 'elevenlabs' | 'webspeech';
+export type TTSAudioMode = 'recorded' | 'live';
 
 export interface TTSVoiceOption {
   id: string;
@@ -201,6 +202,7 @@ export interface ReaderSettings {
   ttsProvider?: TTSProvider;
   ttsVoice?: string;
   ttsSpeed?: number;
+  ttsAudioMode?: TTSAudioMode;
 }
 
 export interface SearchResult {

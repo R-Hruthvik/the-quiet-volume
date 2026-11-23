@@ -1534,6 +1534,51 @@ export function SettingsBookView({
               )}
             </div>
 
+            {/* Audio Delivery Mode: Recorded / Cached (Default) vs Live */}
+            <div className="mt-3 rounded-[3px] border border-black/15 bg-black/[0.02] p-2">
+              <div className="flex items-center justify-between font-hand-patrick text-xs font-semibold mb-1.5">
+                <span>Audio Delivery Mode:</span>
+                <span className="text-[10px] uppercase font-book-mono tracking-wider opacity-60">
+                  {settings.ttsAudioMode === 'live' ? '⚡ Live Mode' : '⏺ Recorded Mode (Default)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onUpdateSettings({ ttsAudioMode: 'recorded' })}
+                  className={`flex flex-col items-start rounded-[3px] border p-2 text-left transition-all cursor-pointer ${
+                    (settings.ttsAudioMode || 'recorded') === 'recorded'
+                      ? 'border-[#7C5E3E] bg-[#7C5E3E]/10 ring-1 ring-[#7C5E3E]/30 font-medium'
+                      : 'border-black/15 bg-white/40 hover:bg-black/5 opacity-75'
+                  }`}
+                >
+                  <span className="font-hand-caveat text-sm font-semibold flex items-center gap-1">
+                    <span>⏺</span> Recorded (Default)
+                  </span>
+                  <span className="font-hand-patrick text-[10px] opacity-75 leading-tight mt-0.5">
+                    Saves speech offline. Replays cost $0 with zero lag.
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onUpdateSettings({ ttsAudioMode: 'live' })}
+                  className={`flex flex-col items-start rounded-[3px] border p-2 text-left transition-all cursor-pointer ${
+                    settings.ttsAudioMode === 'live'
+                      ? 'border-[#7C5E3E] bg-[#7C5E3E]/10 ring-1 ring-[#7C5E3E]/30 font-medium'
+                      : 'border-black/15 bg-white/40 hover:bg-black/5 opacity-75'
+                  }`}
+                >
+                  <span className="font-hand-caveat text-sm font-semibold flex items-center gap-1">
+                    <span>⚡</span> Always Live
+                  </span>
+                  <span className="font-hand-patrick text-[10px] opacity-75 leading-tight mt-0.5">
+                    Streams fresh real-time audio on every read.
+                  </span>
+                </button>
+              </div>
+            </div>
+
             {/* Model & Voice Selection: Deepgram Primary (cheap) first, then ElevenLabs, then Native */}
             <div className="mt-3 space-y-2">
               <div className="flex items-baseline justify-between font-hand-patrick text-xs opacity-75">
