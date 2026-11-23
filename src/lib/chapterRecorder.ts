@@ -7,7 +7,7 @@
 
 import type { BookVolume, ReaderSettings, TTSProvider } from '../types/book';
 import { splitIntoSentences } from './tts';
-import { saveChapterAudioFile } from './fileSystemStorage';
+import { formatChapterFileName, saveChapterAudioFile } from './fileSystemStorage';
 import { saveChapterAudio } from './storage';
 
 export interface ChapterRecordingProgress {
@@ -245,6 +245,17 @@ export async function recordChapterAudio(
   }).catch(() => {});
 
   const url = URL.createObjectURL(finalBlob);
+  const fileName = savedFileName || formatChapterFileName(sectionIndex, chapterTitle);
+
+  // If mobile or folder picker unavailable, trigger direct file download to device Downloads folder
+  if (!savedFileName && typeof document !== 'undefined') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
   onProgress?.({
     chapterIndex: sectionIndex,
@@ -257,7 +268,7 @@ export async function recordChapterAudio(
 
   return {
     blob: finalBlob,
-    fileName: savedFileName || `${chapterTitle}.mp3`,
+    fileName,
     url,
   };
 }
