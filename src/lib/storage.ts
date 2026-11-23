@@ -6,8 +6,9 @@ import {
 } from './lighting';
 
 const DB_NAME = 'quiet-volume-library';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_VOLUMES = 'volumes';
+const STORE_CHAPTER_AUDIO = 'chapterAudio';
 const SETTINGS_KEY = 'quiet-volume-settings-v1';
 const ACTIVE_BOOK_KEY = 'quiet-volume-active-id-v1';
 const CATALOG_KEY = 'quiet-volume-catalog-v1';
@@ -19,6 +20,18 @@ export interface VolumeCatalogStub {
   author?: string;
   pageCount: number;
   lastOpenedAt: number;
+}
+
+export interface ChapterAudioRecord {
+  id: string; // `${volumeId}:${sectionIndex}`
+  volumeId: string;
+  sectionIndex: number;
+  sectionTitle: string;
+  audioBlob: Blob;
+  mimeType: string;
+  provider: string;
+  voice: string;
+  createdAt: number;
 }
 
 export async function ensurePersistentStorage(): Promise<boolean> {
@@ -93,11 +106,103 @@ function openDb(): Promise<IDBDatabase | null> {
         if (!db.objectStoreNames.contains(STORE_VOLUMES)) {
           db.createObjectStore(STORE_VOLUMES, { keyPath: 'id' });
         }
+        if (!db.objectStoreNames.contains(STORE_CHAPTER_AUDIO)) {
+          const audioStore = db.createObjectStore(STORE_CHAPTER_AUDIO, { keyPath: 'id' });
+          audioStore.createIndex('volumeId', 'volumeId', { unique: false });
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
     } catch {
       resolve(null);
+    }
+  });
+}
+
+export async function saveChapterAudio(record: ChapterAudioRecord): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readwrite');
+      tx.objectStore(STORE_CHAPTER_AUDIO).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export async function loadChapterAudio(
+  volumeId: string,
+  sectionIndex: number
+): Promise<ChapterAudioRecord | null> {
+  const db = await openDb();
+  if (!db) return null;
+  const id = `${volumeId}:${sectionIndex}`;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readonly');
+      const req = tx.objectStore(STORE_CHAPTER_AUDIO).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function hasChapterAudio(
+  volumeId: string,
+  sectionIndex: number
+): Promise<boolean> {
+  const record = await loadChapterAudio(volumeId, sectionIndex);
+  return !!record && !!record.audioBlob;
+}
+
+export async function listSavedAudioChapters(volumeId: string): Promise<number[]> {
+  const db = await openDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readonly');
+      const store = tx.objectStore(STORE_CHAPTER_AUDIO);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const records = (req.result as ChapterAudioRecord[]) || [];
+        const sectionIndices = records
+          .filter((r) => r.volumeId === volumeId)
+          .map((r) => r.sectionIndex);
+        resolve(sectionIndices);
+      };
+      req.onerror = () => resolve([]);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+export async function deleteVolumeAudio(volumeId: string): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  return new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(STORE_CHAPTER_AUDIO, 'readwrite');
+      const store = tx.objectStore(STORE_CHAPTER_AUDIO);
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const records = (req.result as ChapterAudioRecord[]) || [];
+        for (const r of records) {
+          if (r.volumeId === volumeId) {
+            store.delete(r.id);
+          }
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
     }
   });
 }
@@ -182,6 +287,7 @@ export async function removeVolume(volumeId: string): Promise<void> {
         resolve();
       }
     });
+    await deleteVolumeAudio(volumeId);
   }
   try {
     const catalog = loadCatalog().filter((v) => v.id !== volumeId);
@@ -202,8 +308,9 @@ export async function clearAllVolumes(): Promise<void> {
   if (db) {
     await new Promise<void>((resolve) => {
       try {
-        const tx = db.transaction(STORE_VOLUMES, 'readwrite');
+        const tx = db.transaction([STORE_VOLUMES, STORE_CHAPTER_AUDIO], 'readwrite');
         tx.objectStore(STORE_VOLUMES).clear();
+        tx.objectStore(STORE_CHAPTER_AUDIO).clear();
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
       } catch {

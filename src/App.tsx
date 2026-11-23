@@ -39,6 +39,8 @@ import {
   speakSentence,
   splitIntoSentences,
   stopSpeaking,
+  syncMediaSessionMetadata,
+  unlockAudioOnUserGesture,
 } from './lib/tts';
 import type {
   BookIdentity,
@@ -80,6 +82,9 @@ export default function App() {
   } | null>(null);
 
   const speechSessionRef = useRef(0);
+  const queueCursorRef = useRef(0);
+  const queueRef = useRef<{ blockId: string; sentenceIndex: number; text: string }[]>([]);
+  const currentSpeakNextRef = useRef<(() => void) | null>(null);
 
   // Load persisted volumes (or seed quiet starter volumes on first visit)
   useEffect(() => {
@@ -194,6 +199,9 @@ export default function App() {
   const stopAllSpeech = useCallback(() => {
     speechSessionRef.current += 1;
     stopSpeaking();
+    currentSpeakNextRef.current = null;
+    queueCursorRef.current = 0;
+    queueRef.current = [];
     setIsReadingAloud(false);
     setIsSpeechPaused(false);
     setActiveSpeechCue(null);
@@ -508,12 +516,27 @@ export default function App() {
   const startSpeakingFromPage = useCallback(
     (pageIndex: number) => {
       if (!activeVolume) return;
+      unlockAudioOnUserGesture();
       const sessionId = ++speechSessionRef.current;
 
       const spreadPages =
         settings.pageMode === 'two-page'
           ? [paginatedPages[pageIndex], paginatedPages[pageIndex + 1]].filter(Boolean)
           : [paginatedPages[pageIndex]].filter(Boolean);
+
+      const sectionTitle = spreadPages[0]?.sectionTitle || activeVolume.title;
+      syncMediaSessionMetadata(
+        activeVolume.title,
+        activeVolume.author || 'The Quiet Volume',
+        () => {
+          resumeSpeaking();
+          setIsSpeechPaused(false);
+        },
+        () => {
+          pauseSpeaking();
+          setIsSpeechPaused(true);
+        }
+      );
 
       const queue: { blockId: string; sentenceIndex: number; text: string }[] = [];
       for (const page of spreadPages) {
@@ -526,6 +549,9 @@ export default function App() {
           });
         }
       }
+
+      queueRef.current = queue;
+      queueCursorRef.current = 0;
 
       if (queue.length === 0) {
         const step = settings.pageMode === 'two-page' ? 2 : 1;
@@ -542,10 +568,9 @@ export default function App() {
         return;
       }
 
-      let cursor = 0;
       const speakNext = () => {
         if (speechSessionRef.current !== sessionId) return;
-        if (cursor >= queue.length) {
+        if (queueCursorRef.current >= queue.length) {
           const step = settings.pageMode === 'two-page' ? 2 : 1;
           const nextIdx = pageIndex + step;
           if (nextIdx < paginatedPages.length - 1) {
@@ -560,7 +585,7 @@ export default function App() {
           }
           return;
         }
-        const cue = queue[cursor++];
+        const cue = queue[queueCursorRef.current++];
         setActiveSpeechCue({ blockId: cue.blockId, sentenceIndex: cue.sentenceIndex });
         speakSentence(
           cue.text,
@@ -574,6 +599,7 @@ export default function App() {
         );
       };
 
+      currentSpeakNextRef.current = speakNext;
       setIsReadingAloud(true);
       setIsSpeechPaused(false);
       speakNext();
@@ -590,9 +616,44 @@ export default function App() {
     ]
   );
 
+  const handleSkipSentence = useCallback(
+    (direction: 'next' | 'prev') => {
+      if (!isReadingAloud || !queueRef.current.length) return;
+      stopSpeaking();
+      if (direction === 'next') {
+        currentSpeakNextRef.current?.();
+      } else {
+        queueCursorRef.current = Math.max(0, queueCursorRef.current - 2);
+        currentSpeakNextRef.current?.();
+      }
+    },
+    [isReadingAloud]
+  );
+
+  const handleStartSpeakingFromPage = useCallback(
+    (pageIndex: number) => {
+      unlockAudioOnUserGesture();
+      if (!activeVolume) return;
+      const targetIdx = clampSpreadStart(pageIndex, paginatedPages.length, settings.pageMode);
+      setView('reading');
+      handleChangePageIndex(targetIdx);
+      window.setTimeout(() => {
+        startSpeakingFromPage(targetIdx);
+      }, 150);
+    },
+    [activeVolume, paginatedPages.length, settings.pageMode, handleChangePageIndex, startSpeakingFromPage]
+  );
+
   const handleToggleReadAloud = useCallback(() => {
+    unlockAudioOnUserGesture();
     if (isReadingAloud) {
-      stopAllSpeech();
+      if (isSpeechPaused) {
+        resumeSpeaking();
+        setIsSpeechPaused(false);
+      } else {
+        pauseSpeaking();
+        setIsSpeechPaused(true);
+      }
       return;
     }
     if (!activeVolume) return;
@@ -605,7 +666,7 @@ export default function App() {
     window.setTimeout(() => startSpeakingFromPage(startIdx), 120);
   }, [
     isReadingAloud,
-    stopAllSpeech,
+    isSpeechPaused,
     activeVolume,
     paginatedPages.length,
     settings.pageMode,
@@ -712,6 +773,9 @@ export default function App() {
           onSaveFinalThought={handleSaveFinalThought}
           onRemoveVolume={handleRemoveVolume}
           onEmptyReadingRoom={handleEmptyReadingRoom}
+          onToggleReadAloud={handleToggleReadAloud}
+          onStartReadAloud={handleStartSpeakingFromPage}
+          onSkipSentence={handleSkipSentence}
           onPauseResumeSpeech={handlePauseResumeSpeech}
           onStopSpeech={stopAllSpeech}
           onDisableRestReminder={() => updateSettings({ restReminderEnabled: false })}

@@ -274,6 +274,7 @@ interface TocPageProps {
   paper?: PaperSpec;
   handClass: string;
   onSelectPageNumber: (pageNumber: number) => void;
+  onStartReadAloud?: (pageNumber: number) => void;
 }
 
 export function TocPage({
@@ -282,6 +283,7 @@ export function TocPage({
   paper: rawPaper,
   handClass,
   onSelectPageNumber,
+  onStartReadAloud,
 }: TocPageProps) {
   const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id);
   const [filterQuery, setFilterQuery] = useState('');
@@ -342,11 +344,11 @@ export function TocPage({
         ) : (
           <ol className="space-y-3">
             {filtered.map((entry) => (
-              <li key={`${entry.sectionIndex}-${entry.title}`}>
+              <li key={`${entry.sectionIndex}-${entry.title}`} className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => onSelectPageNumber(entry.pageNumber)}
-                  className="group flex w-full items-baseline justify-between gap-3 text-left transition-opacity hover:opacity-70 cursor-pointer"
+                  className="group flex flex-1 items-baseline justify-between gap-3 text-left transition-opacity hover:opacity-70 cursor-pointer min-w-0"
                 >
                   <span className={`${handClass} text-[15px] sm:text-[16px] leading-snug truncate`}>
                     {entry.title}
@@ -363,6 +365,18 @@ export function TocPage({
                     {entry.pageNumber}
                   </span>
                 </button>
+                {onStartReadAloud && (
+                  <button
+                    type="button"
+                    onClick={() => onStartReadAloud(entry.pageNumber)}
+                    title={`Read "${entry.title}" aloud`}
+                    aria-label={`Read "${entry.title}" aloud`}
+                    className="flex min-h-[32px] min-w-[32px] items-center justify-center rounded p-1 text-xs opacity-40 hover:opacity-100 hover:bg-black/5 transition-all cursor-pointer touch-manipulation shrink-0"
+                    style={{ color: paper.pencilInk }}
+                  >
+                    🔊
+                  </button>
+                )}
                 {isCollection && entry.sourceFile && (
                   <span
                     className="block pl-1 font-hand-patrick text-[11px] opacity-65"

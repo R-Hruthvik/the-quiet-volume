@@ -43,6 +43,9 @@ interface OpenBookViewProps {
   onSaveFinalThought: (thought: string) => void;
   onRemoveVolume: (id: string) => void;
   onEmptyReadingRoom: () => void;
+  onToggleReadAloud: () => void;
+  onStartReadAloud: (pageIndex: number) => void;
+  onSkipSentence?: (direction: 'next' | 'prev') => void;
   onPauseResumeSpeech: () => void;
   onStopSpeech: () => void;
   onDisableRestReminder: () => void;
@@ -73,6 +76,9 @@ export function OpenBookView({
   onSaveFinalThought,
   onRemoveVolume,
   onEmptyReadingRoom,
+  onToggleReadAloud,
+  onStartReadAloud,
+  onSkipSentence,
   onPauseResumeSpeech,
   onStopSpeech,
   onDisableRestReminder,
@@ -492,6 +498,9 @@ export function OpenBookView({
       } else if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         onToggleLiveCameraBar(!liveCameraBarOpen);
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        onToggleReadAloud();
       } else if (e.key === '/') {
         e.preventDefault();
         onOpenBackCover(true);
@@ -649,16 +658,30 @@ export function OpenBookView({
         }`}
       >
         {hudCollapsed ? (
-          <button
-            type="button"
-            onClick={() => setHudCollapsed(false)}
-            title="Expand quick navigation"
-            aria-label="Expand quick navigation"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 px-3 py-2 rounded-full hover:bg-black/8 transition-colors cursor-pointer touch-manipulation"
-          >
-            <span>📖</span>
-            <span>Nav</span>
-          </button>
+          <div className="flex items-center gap-1">
+            {isReadingAloud && (
+              <button
+                type="button"
+                onClick={onPauseResumeSpeech}
+                title={isSpeechPaused ? 'Resume read aloud' : 'Pause read aloud'}
+                aria-label={isSpeechPaused ? 'Resume read aloud' : 'Pause read aloud'}
+                className="flex min-h-[44px] items-center justify-center gap-1 px-3 py-1.5 rounded-full bg-amber-900/15 text-amber-950 font-medium hover:bg-amber-900/25 transition-colors cursor-pointer touch-manipulation text-xs"
+              >
+                <span>{isSpeechPaused ? '▶' : '⏸'}</span>
+                <span>{isSpeechPaused ? 'Paused' : 'Playing'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setHudCollapsed(false)}
+              title="Expand quick navigation"
+              aria-label="Expand quick navigation"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 px-3 py-2 rounded-full hover:bg-black/8 transition-colors cursor-pointer touch-manipulation"
+            >
+              <span>📖</span>
+              <span>Nav</span>
+            </button>
+          </div>
         ) : (
           <>
             <button
@@ -709,6 +732,62 @@ export function OpenBookView({
               <span>📷</span>
               <span>Zoom</span>
             </button>
+            <span aria-hidden="true" className="opacity-30">|</span>
+            <button
+              type="button"
+              onClick={onToggleReadAloud}
+              title={
+                isReadingAloud
+                  ? isSpeechPaused
+                    ? 'Resume read aloud (R key)'
+                    : 'Pause read aloud (R key)'
+                  : 'Read aloud from current spread (R key)'
+              }
+              aria-label={isReadingAloud ? 'Control read aloud' : 'Read aloud from current spread'}
+              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-[3px] px-3 py-2 transition-colors cursor-pointer touch-manipulation whitespace-nowrap font-medium ${
+                isReadingAloud
+                  ? 'bg-amber-900/15 text-amber-950 font-bold'
+                  : 'hover:bg-black/8'
+              }`}
+            >
+              <span>{isReadingAloud ? (isSpeechPaused ? '▶' : '⏸') : '🔊'}</span>
+              <span>{isReadingAloud ? (isSpeechPaused ? 'Resume' : 'Pause') : 'Read Aloud'}</span>
+            </button>
+            {isReadingAloud && (
+              <>
+                {onSkipSentence && (
+                  <button
+                    type="button"
+                    onClick={() => onSkipSentence('prev')}
+                    title="Previous sentence"
+                    aria-label="Previous sentence"
+                    className="flex min-h-[40px] items-center justify-center rounded-[3px] px-2 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation text-xs"
+                  >
+                    ⏮
+                  </button>
+                )}
+                {onSkipSentence && (
+                  <button
+                    type="button"
+                    onClick={() => onSkipSentence('next')}
+                    title="Next sentence"
+                    aria-label="Next sentence"
+                    className="flex min-h-[40px] items-center justify-center rounded-[3px] px-2 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation text-xs"
+                  >
+                    ⏭
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onStopSpeech}
+                  title="Stop read aloud"
+                  aria-label="Stop read aloud"
+                  className="flex min-h-[40px] items-center justify-center rounded-[3px] px-2 py-2 hover:bg-red-900/15 text-red-900 transition-colors cursor-pointer touch-manipulation text-xs font-semibold"
+                >
+                  ⏹
+                </button>
+              </>
+            )}
             <span aria-hidden="true" className="opacity-30">|</span>
             <button
               type="button"
@@ -857,6 +936,7 @@ export function OpenBookView({
                     setScrollY(0);
                     onChangePageIndex(2);
                   }}
+                  onStartReadAloud={onStartReadAloud}
                 />
               </div>
 
@@ -888,6 +968,7 @@ export function OpenBookView({
                     setScrollY(0);
                     onChangePageIndex(2);
                   }}
+                  onStartReadAloud={onStartReadAloud}
                 />
               </div>
             </div>
@@ -970,13 +1051,33 @@ export function OpenBookView({
                   color: paper.ink,
                 }}
               >
+                {onSkipSentence && (
+                  <button
+                    type="button"
+                    onClick={() => onSkipSentence('prev')}
+                    className="opacity-70 hover:opacity-100 cursor-pointer p-0.5"
+                    title="Previous sentence"
+                  >
+                    ⏮ Prev
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onPauseResumeSpeech}
-                  className="underline decoration-dotted underline-offset-2"
+                  className="underline decoration-dotted underline-offset-2 font-medium cursor-pointer"
                 >
-                  {isSpeechPaused ? 'Resume voice' : 'Pause voice'}
+                  {isSpeechPaused ? 'Resume' : 'Pause'}
                 </button>
+                {onSkipSentence && (
+                  <button
+                    type="button"
+                    onClick={() => onSkipSentence('next')}
+                    className="opacity-70 hover:opacity-100 cursor-pointer p-0.5"
+                    title="Next sentence"
+                  >
+                    Next ⏭
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {

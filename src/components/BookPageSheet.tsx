@@ -37,6 +37,7 @@ interface BookPageSheetProps {
   onRemoveVolume: (id: string) => void;
   onEmptyReadingRoom: () => void;
   onJumpToToc: () => void;
+  onStartReadAloud?: (pageIndex: number) => void;
 }
 
 function getWritingHandClass(hand: ReaderSettings['writingHand']): string {
@@ -177,6 +178,7 @@ export function BookPageSheet({
   onRemoveVolume,
   onEmptyReadingRoom,
   onJumpToToc,
+  onStartReadAloud,
 }: BookPageSheetProps) {
   const paper = rawPaper && rawPaper.pageBg ? rawPaper : getPaperSpec(rawPaper?.id || settings?.paper);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
@@ -253,20 +255,34 @@ export function BookPageSheet({
 
     if (block.kind === 'chapter-title') {
       return (
-        <h2
-          key={block.id}
-          className={
-            isNotebook
-              ? 'font-hand-caveat mb-2 mt-0.5 border-b pb-1 text-[23px] font-medium leading-tight [text-wrap:balance]'
-              : 'font-hand-caveat mb-3 mt-1 text-[28px] font-medium leading-tight [text-wrap:balance]'
-          }
-          style={{
-            color: paper.ink,
-            borderColor: isNotebook ? `${paper.ink}1A` : undefined,
-          }}
-        >
-          {block.text}
-        </h2>
+        <div key={block.id} className="group flex items-baseline justify-between gap-3">
+          <h2
+            className={
+              isNotebook
+                ? 'font-hand-caveat mb-2 mt-0.5 border-b pb-1 text-[23px] font-medium leading-tight [text-wrap:balance]'
+                : 'font-hand-caveat mb-3 mt-1 text-[28px] font-medium leading-tight [text-wrap:balance]'
+            }
+            style={{
+              color: paper.ink,
+              borderColor: isNotebook ? `${paper.ink}1A` : undefined,
+            }}
+          >
+            {block.text}
+          </h2>
+          {page && onStartReadAloud && (
+            <button
+              type="button"
+              onClick={() => onStartReadAloud(page.index)}
+              title="Read this chapter aloud"
+              aria-label="Read this chapter aloud"
+              className="flex min-h-[36px] items-center gap-1 rounded px-2 py-1 font-hand-kalam text-xs opacity-60 hover:opacity-100 transition-opacity hover:bg-black/5 cursor-pointer touch-manipulation shrink-0"
+              style={{ color: paper.pencilInk }}
+            >
+              <span>🔊</span>
+              <span className="hidden sm:inline">Listen</span>
+            </button>
+          )}
+        </div>
       );
     }
 
@@ -734,6 +750,7 @@ export function BookPageSheet({
             paper={paper}
             handClass={handClass}
             onSelectPageNumber={onSelectTocPage}
+            onStartReadAloud={onStartReadAloud}
           />
         )}
 
