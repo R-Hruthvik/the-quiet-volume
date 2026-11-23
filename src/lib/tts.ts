@@ -64,7 +64,7 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     style: 'British Classical Narrator',
     costCategory: 'High-Fidelity',
     allowanceInfo: '10,000 Characters Free Every Month (Recurring free tier)',
-    previewUrl: '/samples/test_elevenlabs_brian.mp3',
+    previewUrl: '/samples/elevenlabs_brian.mp3',
     description: 'Audiobook-grade BBC-style British narration with lifelike nuance.',
   },
   {
@@ -76,7 +76,7 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     style: 'Confident & Literary',
     costCategory: 'High-Fidelity',
     allowanceInfo: '10,000 Characters Free Every Month (Recurring free tier)',
-    previewUrl: '/samples/test_elevenlabs_alice.mp3',
+    previewUrl: '/samples/elevenlabs_alice.mp3',
     description: 'Clear, elegant narrative tone with delicate cadence shifts.',
   },
   {
