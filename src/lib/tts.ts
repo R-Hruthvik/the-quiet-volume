@@ -93,10 +93,50 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
   },
 ];
 
+const COMMON_ABBREVIATIONS = new Set([
+  'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'sr.', 'jr.', 'vs.', 'etc.',
+  'e.g.', 'i.e.', 'st.', 'vol.', 'p.', 'pp.', 'no.', 'ch.', 'gen.', 'rep.', 'sen.'
+]);
+
 export function splitIntoSentences(text: string): string[] {
-  const matches = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g);
-  if (!matches) return [text];
-  return matches.map((s) => s.trim()).filter(Boolean);
+  if (!text || !text.trim()) return [];
+
+  let rawSegments: string[];
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+    rawSegments = Array.from(segmenter.segment(text), (s) => s.segment);
+  } else {
+    // Non-destructive fallback regex that preserves all text, quotes, and punctuation
+    const matches = text.match(/[^.!?]+(?:[.!?]+(?:['"”’)]+|\s+|$)|$)/g);
+    rawSegments = matches || [text];
+  }
+
+  const result: string[] = [];
+  let buffer = '';
+
+  for (let i = 0; i < rawSegments.length; i++) {
+    const seg = rawSegments[i].trim();
+    if (!seg) continue;
+
+    if (!buffer) {
+      buffer = seg;
+    } else {
+      const words = buffer.split(/\s+/);
+      const rawLast = words[words.length - 1] || '';
+      const lastWord = rawLast.toLowerCase().replace(/^["'“”‘’)]+|["'“”‘’)]+$/g, '');
+      const startsWithLower = /^[a-z]/.test(seg);
+
+      // Merge if previous segment ended in an abbreviation or if current segment starts with lowercase (e.g. dialogue tag "he said")
+      if ((lastWord && COMMON_ABBREVIATIONS.has(lastWord)) || startsWithLower) {
+        buffer += ' ' + seg;
+      } else {
+        result.push(buffer);
+        buffer = seg;
+      }
+    }
+  }
+  if (buffer) result.push(buffer);
+  return result;
 }
 
 export function isSpeechSupported(): boolean {

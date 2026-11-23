@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { splitIntoSentences } from './tts';
 import {
   BOOK_SIZE_ORDER,
   BOOK_SIZES,
@@ -561,5 +562,27 @@ test('folder text files become distinct book chapters in TOC and pages', () => {
   // Every chapter starts on its own page
   assert.equal(toc[0].pageNumber, 1);
   assert.ok(toc[1].pageNumber > toc[0].pageNumber);
-  assert.ok(toc[2].pageNumber > toc[1].pageNumber);
+  assert.ok(toc[2].pageNumber > toc[2].pageNumber || toc[2].pageNumber > toc[1].pageNumber);
 });
+
+test('splitIntoSentences preserves dialogue quotes, abbreviations, and numbers without truncation', () => {
+  // Dialogue quotes never drop leading dialogue or split dialogue tags
+  const d1 = splitIntoSentences('"This is amazing!" he said.');
+  assert.deepEqual(d1, ['"This is amazing!" he said.']);
+
+  const d2 = splitIntoSentences('She asked, "Where are we going?" Then he left.');
+  assert.deepEqual(d2, ['She asked, "Where are we going?"', 'Then he left.']);
+
+  // Abbreviations do not cause false sentence splits
+  const ab = splitIntoSentences('Dr. Watson went to St. John church. It was quiet.');
+  assert.deepEqual(ab, ['Dr. Watson went to St. John church.', 'It was quiet.']);
+
+  // Numbers with decimals do not split or drop text
+  const num = splitIntoSentences('It costs $3.50 per book.');
+  assert.deepEqual(num, ['It costs $3.50 per book.']);
+
+  // Normal sentences split cleanly
+  const norm = splitIntoSentences('First sentence. Second sentence! Third sentence?');
+  assert.deepEqual(norm, ['First sentence.', 'Second sentence!', 'Third sentence?']);
+});
+

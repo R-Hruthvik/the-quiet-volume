@@ -1,5 +1,6 @@
 import { BOOK_SIZES } from './dimensions';
 import { generateBookIdentity } from './identity';
+import { splitIntoSentences } from './tts';
 import type {
   BookBlock,
   BookSection,
@@ -800,7 +801,7 @@ export function paginateBook(volume: BookVolume, config: PaginationConfig): Pagi
       let didSplit = false;
 
       if (block.kind === 'paragraph' && remainingCapacity >= metrics.lineHeightPx * 3.2) {
-        const sentences = block.text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [block.text];
+        const sentences = splitIntoSentences(block.text);
         if (sentences.length > 1) {
           const headSentences: string[] = [];
           let headWeight = 0;
