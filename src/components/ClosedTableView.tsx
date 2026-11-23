@@ -235,7 +235,11 @@ export function ClosedTableView({
         accept=".txt,.md,.markdown,.pdf,.epub,.zip,text/plain,text/markdown,application/pdf,application/epub+zip,application/zip"
         onChange={handleMultiFileChange}
         className="sr-only"
-        aria-label="Select multiple files (Ctrl+A) to bind into a book"
+        aria-label={
+          viewport.w < 640
+            ? 'Select multiple files to bind into a book'
+            : 'Select multiple files (Ctrl+A) to bind into a book'
+        }
       />
       <input
         ref={folderInputRef}
@@ -380,7 +384,7 @@ export function ClosedTableView({
         )}
 
         {/* CENTER DESK ZONE: Strictly aspect-ratio-locked primary book */}
-        <div className="relative flex shrink-0 flex-col items-center">
+        <div className="relative flex shrink-0 flex-col items-center max-w-full">
           {centerBook ? (
             <div className="relative flex flex-col items-center">
               <button
@@ -490,7 +494,7 @@ export function ClosedTableView({
               </button>
             </div>
           ) : (
-            <div className="relative flex flex-col items-center">
+            <div className="relative flex w-full max-w-[94vw] sm:max-w-2xl flex-col items-center px-2">
               <button
                 type="button"
                 onClick={triggerFilePicker}
@@ -545,56 +549,66 @@ export function ClosedTableView({
                 </div>
               </button>
 
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <div className="mt-7 flex w-full max-w-[94vw] sm:max-w-2xl flex-wrap items-center justify-center gap-2 sm:gap-x-5 sm:gap-y-2 px-2">
                 <button
                   type="button"
                   onClick={triggerFolderPicker}
-                  className="font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
+                  className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
                   style={{ color: lightSpec.tableInk }}
                 >
                   Import folder as chapters
                 </button>
-                <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
                   ·
                 </span>
                 <button
                   type="button"
                   onClick={triggerMultiFilePicker}
-                  className="font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
+                  className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
                   style={{ color: lightSpec.tableInk }}
                 >
-                  Select multiple files (Ctrl+A)
+                  {viewport.w < 640 ? 'Select multiple files' : 'Select multiple files (Ctrl+A)'}
                 </button>
-                <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
                   ·
                 </span>
                 <button
                   type="button"
                   onClick={onBindSampleManuscript}
-                  className="font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
+                  className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
                   style={{ color: lightSpec.tableInk }}
                 >
                   Or bind a sample manuscript
                 </button>
                 {!layout.isDesktop && volumes[0] && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenVolume(volumes[0].id)}
-                    className="font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
-                    style={{ color: lightSpec.tableInk }}
-                  >
-                    Open “{volumes[0].title}”
-                  </button>
+                  <>
+                    <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                      ·
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenVolume(volumes[0].id)}
+                      className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+                      style={{ color: lightSpec.tableInk }}
+                    >
+                      Open “{volumes[0].title}”
+                    </button>
+                  </>
                 )}
                 {!layout.isDesktop && (
-                  <button
-                    type="button"
-                    onClick={onOpenSettingsBook}
-                    className="font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
-                    style={{ color: lightSpec.tableInk }}
-                  >
-                    Settings book
-                  </button>
+                  <>
+                    <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                      ·
+                    </span>
+                    <button
+                      type="button"
+                      onClick={onOpenSettingsBook}
+                      className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+                      style={{ color: lightSpec.tableInk }}
+                    >
+                      Settings book
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -779,46 +793,46 @@ export function ClosedTableView({
 
       {/* Mobile bottom quiet links (< 768px only) */}
       {centerBook && !layout.isDesktop && (
-        <div className="fixed bottom-5 inset-x-4 flex items-center justify-center gap-3">
+        <div className="fixed bottom-3 sm:bottom-5 inset-x-2 sm:inset-x-4 z-30 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 px-2">
           <button
             type="button"
             onClick={onOpenSettingsBook}
-            className="font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85"
+            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
             style={{ color: lightSpec.tableInk }}
           >
             Settings book
           </button>
-          <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+          <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
             ·
           </span>
           <button
             type="button"
             onClick={triggerFolderPicker}
-            className="font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85"
+            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
             style={{ color: lightSpec.tableInk }}
           >
             Import folder
           </button>
-          <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+          <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
             ·
           </span>
           <button
             type="button"
             onClick={triggerMultiFilePicker}
-            className="font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85"
+            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
             style={{ color: lightSpec.tableInk }}
           >
-            Select files (Ctrl+A)
+            {viewport.w < 640 ? 'Select files' : 'Select files (Ctrl+A)'}
           </button>
           {volumes.length > 1 && (
             <>
-              <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+              <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
                 ·
               </span>
               <button
                 type="button"
                 onClick={() => setCatalogOpen(true)}
-                className="font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85"
+                className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
                 style={{ color: lightSpec.tableInk }}
               >
                 Other volumes ({volumes.length})
@@ -873,7 +887,7 @@ export function ClosedTableView({
                 type="button"
                 onClick={pendingPrompt.onCancel}
                 aria-label="Cancel binding"
-                className="font-hand-patrick text-xs text-[#7C7164] hover:text-[#2A231C]"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xs p-2 font-hand-patrick text-xs text-[#7C7164] transition-colors hover:text-[#2A231C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60"
               >
                 never mind
               </button>
@@ -894,13 +908,13 @@ export function ClosedTableView({
             className="ruled-notebook relative w-full max-w-md rounded-[3px] border border-[#BEB39F] bg-[#F5F0E4] p-7 text-[#2A231C] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-baseline justify-between gap-4">
+            <div className="flex items-center justify-between gap-4">
               <h2 className="font-hand-kalam text-2xl">Volumes on this table</h2>
               <button
                 type="button"
                 onClick={() => setCatalogOpen(false)}
                 aria-label="Close catalog"
-                className="font-hand-patrick text-sm text-[#6E6356] hover:text-[#241E18]"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xs p-2.5 font-hand-patrick text-sm text-[#6E6356] transition-colors hover:text-[#241E18] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60"
               >
                 close
               </button>
@@ -922,14 +936,14 @@ export function ClosedTableView({
 
             <ul className="quiet-scroll mt-4 max-h-72 divide-y divide-[#2A231C]/10 overflow-y-auto pr-1">
               {filteredCatalog.map((vol) => (
-                <li key={vol.id} className="py-2.5">
+                <li key={vol.id} className="py-1">
                   <button
                     type="button"
                     onClick={() => {
                       setCatalogOpen(false);
                       onOpenVolume(vol.id);
                     }}
-                    className="flex w-full items-center justify-between gap-3 text-left hover:opacity-75"
+                    className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xs px-1 py-2 text-left hover:opacity-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60"
                   >
                     <span className="flex items-center gap-3 min-w-0">
                       <span
