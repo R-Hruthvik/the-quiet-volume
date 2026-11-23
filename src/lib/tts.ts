@@ -104,14 +104,112 @@ export function isSpeechSupported(): boolean {
 }
 
 // In-memory audio URL cache so re-reading the same sentences makes zero duplicate API calls
+// Bounded to 25 items on mobile to prevent memory bloat, revoking evicted ObjectURLs
+const MAX_AUDIO_CACHE_SIZE = 25;
 const audioCache = new Map<string, string>();
+let persistentAudio: HTMLAudioElement | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 let currentAudioResolve: (() => void) | null = null;
+
+export function getPersistentAudio(): HTMLAudioElement | null {
+  if (typeof window === 'undefined') return null;
+  if (!persistentAudio) {
+    persistentAudio = new Audio();
+  }
+  return persistentAudio;
+}
+
+const SILENT_WAV_BASE64 =
+  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+export function unlockAudioOnUserGesture(): void {
+  if (typeof window === 'undefined') return;
+  const audio = getPersistentAudio();
+  if (!audio) return;
+  // Play silent buffer to acquire mobile browser playback permission
+  if (audio.paused && !audio.src) {
+    audio.src = SILENT_WAV_BASE64;
+    audio.play().catch(() => {});
+  }
+}
+
+function getCachedAudio(key: string): string | undefined {
+  const url = audioCache.get(key);
+  if (url) {
+    // Refresh LRU order
+    audioCache.delete(key);
+    audioCache.set(key, url);
+  }
+  return url;
+}
+
+function setCachedAudio(key: string, url: string): void {
+  if (audioCache.has(key)) {
+    audioCache.delete(key);
+  } else if (audioCache.size >= MAX_AUDIO_CACHE_SIZE) {
+    const oldestKey = audioCache.keys().next().value;
+    if (oldestKey) {
+      const oldestUrl = audioCache.get(oldestKey);
+      if (oldestUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        try {
+          URL.revokeObjectURL(oldestUrl);
+        } catch {
+          // ignore
+        }
+      }
+      audioCache.delete(oldestKey);
+    }
+  }
+  audioCache.set(key, url);
+}
+
+export function syncMediaSessionMetadata(
+  title: string,
+  author?: string,
+  onPlay?: () => void,
+  onPause?: () => void
+): void {
+  if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+  try {
+    if (typeof MediaMetadata !== 'undefined') {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist: author || 'The Quiet Volume',
+        album: 'The Quiet Volume',
+      });
+    }
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (onPlay) {
+        onPlay();
+      } else {
+        resumeSpeaking();
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (onPause) {
+        onPause();
+      } else {
+        pauseSpeaking();
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('stop', () => {
+      stopSpeaking();
+      onPause?.();
+    });
+  } catch {
+    // Ignore unsupported media session actions
+  }
+}
 
 export function stopSpeaking(): void {
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
+    currentAudio.onended = null;
+    currentAudio.onerror = null;
     currentAudio = null;
   }
   if (currentAudioResolve) {
@@ -121,6 +219,13 @@ export function stopSpeaking(): void {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+  }
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.playbackState = 'none';
     } catch {
       // ignore
     }
@@ -137,6 +242,13 @@ export function pauseSpeaking(): void {
       // ignore
     }
   }
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.playbackState = 'paused';
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export function resumeSpeaking(): void {
@@ -149,12 +261,23 @@ export function resumeSpeaking(): void {
       // ignore
     }
   }
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.playbackState = 'playing';
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export interface SpeakOptions {
   provider?: TTSProvider;
   voice?: string;
   speed?: number;
+  title?: string;
+  author?: string;
+  onPlay?: () => void;
+  onPause?: () => void;
 }
 
 export async function speakSentence(
@@ -173,6 +296,13 @@ export async function speakSentence(
   const voice = options.voice || 'aura-asteria-en';
   const speed = options.speed || 1.0;
 
+  syncMediaSessionMetadata(
+    options.title || trimmed.slice(0, 40),
+    options.author,
+    options.onPlay,
+    options.onPause
+  );
+
   // WebSpeech Fallback
   if (provider === 'webspeech') {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -184,9 +314,21 @@ export async function speakSentence(
       const utterance = new SpeechSynthesisUtterance(trimmed);
       utterance.rate = speed * 0.95;
       utterance.pitch = 1.0;
-      utterance.onend = onEnd;
+      utterance.onend = () => {
+        if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+          try {
+            navigator.mediaSession.playbackState = 'none';
+          } catch {}
+        }
+        onEnd();
+      };
       utterance.onerror = () => onError?.();
       window.speechSynthesis.speak(utterance);
+      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.playbackState = 'playing';
+        } catch {}
+      }
     } catch {
       onError?.();
     }
@@ -195,7 +337,7 @@ export async function speakSentence(
 
   // AI TTS (Deepgram Aura or ElevenLabs via /api/tts/speak)
   const cacheKey = `${provider}:${voice}:${trimmed}`;
-  let audioUrl = audioCache.get(cacheKey);
+  let audioUrl = getCachedAudio(cacheKey);
 
   try {
     if (!audioUrl) {
@@ -215,12 +357,13 @@ export async function speakSentence(
 
       const blob = await response.blob();
       audioUrl = URL.createObjectURL(blob);
-      audioCache.set(cacheKey, audioUrl);
+      setCachedAudio(cacheKey, audioUrl);
     }
 
     stopSpeaking();
 
-    const audio = new Audio(audioUrl);
+    const audio = getPersistentAudio() || new Audio();
+    audio.src = audioUrl;
     audio.playbackRate = speed;
     currentAudio = audio;
 
@@ -240,6 +383,11 @@ export async function speakSentence(
     };
 
     await audio.play();
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = 'playing';
+      } catch {}
+    }
   } catch (err) {
     // If network or API fails, smoothly fallback to WebSpeech
     speakSentence(trimmed, { provider: 'webspeech', speed }, onEnd, onError);

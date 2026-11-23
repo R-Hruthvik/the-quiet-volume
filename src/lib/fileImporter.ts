@@ -26,6 +26,8 @@ function stripHtmlToPlainText(html: string): string {
 
 async function parsePdfFile(file: File): Promise<ParsedSourceDoc> {
   const arrayBuffer = await file.arrayBuffer();
+  let loadingTask: any = null;
+  let pdf: any = null;
   try {
     const pdfjsLib = await import('pdfjs-dist');
     // Use standard browser-local workerless/inline setup fallback safely
@@ -36,34 +38,42 @@ async function parsePdfFile(file: File): Promise<ParsedSourceDoc> {
       ).toString();
     }
 
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
-    const pdf = await loadingTask.promise;
+    loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+    pdf = await loadingTask.promise;
     const pageTexts: string[] = [];
     let lowTextPages = 0;
 
     for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const lines: string[] = [];
-      let currentLine = '';
-      let lastY: number | null = null;
-
-      for (const item of content.items) {
-        if (!('str' in item)) continue;
-        const textItem = item as { str: string; transform?: number[] };
-        const y = textItem.transform ? Math.round(textItem.transform[5]) : null;
-        if (lastY !== null && y !== null && Math.abs(y - lastY) > 6) {
-          if (currentLine.trim()) lines.push(currentLine.trim());
-          currentLine = textItem.str;
-        } else {
-          currentLine += (currentLine && textItem.str ? ' ' : '') + textItem.str;
-        }
-        if (y !== null) lastY = y;
+      if (p % 10 === 0) {
+        // Yield thread on mobile every 10 pages to prevent UI jank
+        await new Promise((r) => setTimeout(r, 0));
       }
-      if (currentLine.trim()) lines.push(currentLine.trim());
-      const joined = lines.join('\n').trim();
-      if (joined.length < 30) lowTextPages += 1;
-      if (joined) pageTexts.push(joined);
+      const page = await pdf.getPage(p);
+      try {
+        const content = await page.getTextContent();
+        const lines: string[] = [];
+        let currentLine = '';
+        let lastY: number | null = null;
+
+        for (const item of content.items) {
+          if (!('str' in item)) continue;
+          const textItem = item as { str: string; transform?: number[] };
+          const y = textItem.transform ? Math.round(textItem.transform[5]) : null;
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 6) {
+            if (currentLine.trim()) lines.push(currentLine.trim());
+            currentLine = textItem.str;
+          } else {
+            currentLine += (currentLine && textItem.str ? ' ' : '') + textItem.str;
+          }
+          if (y !== null) lastY = y;
+        }
+        if (currentLine.trim()) lines.push(currentLine.trim());
+        const joined = lines.join('\n').trim();
+        if (joined.length < 30) lowTextPages += 1;
+        if (joined) pageTexts.push(joined);
+      } finally {
+        page.cleanup?.();
+      }
     }
 
     const metaData = await pdf.getMetadata().catch(() => null);
@@ -111,6 +121,17 @@ async function parsePdfFile(file: File): Promise<ParsedSourceDoc> {
       },
       ocrNote: 'PDF text extraction encountered an unusual encoding; review carefully.',
     };
+  } finally {
+    try {
+      await pdf?.destroy?.();
+    } catch {
+      // ignore
+    }
+    try {
+      await loadingTask?.destroy?.();
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -356,8 +377,8 @@ export async function readDroppedFilesLocally(files: File[]): Promise<ParsedSour
       lower.endsWith('.text')
     ) {
       const text = await file.text();
-      // Skip empty or tiny status/tracking files (e.g. .done files with "done")
-      if (text.trim().length < 25) continue;
+      // Skip empty or whitespace-only files (poems, haikus, short notes are kept)
+      if (!text.trim()) continue;
       results.push({
         fileName: file.name,
         title: cleanFileStem(file.name),
@@ -374,4 +395,39 @@ export async function readDroppedFilesLocally(files: File[]): Promise<ParsedSour
   }
 
   return results;
+}
+
+export async function processImportedFolder(files: File[]): Promise<{ files: File[]; title: string }> {
+  // 1. Filter out hidden system files (.DS_Store, __macosx) and check supported files
+  const validFiles = files.filter((f) => {
+    const base = f.name.toLowerCase();
+    const relative = (f.webkitRelativePath || '').toLowerCase();
+    if (base.startsWith('.') || base.startsWith('__macosx')) return false;
+    if (relative.includes('__macosx') || relative.split('/').some((part) => part.startsWith('.'))) {
+      return false;
+    }
+    return isSupportedBookFile(f);
+  });
+
+  // 2. Natural alphanumeric sort (e.g. Chapter 1, Chapter 2, Chapter 10)
+  validFiles.sort((a, b) =>
+    (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  );
+
+  // 3. Extract folder title from webkitRelativePath or fallback to 'Imported Volume'
+  let folderName = 'Imported Volume';
+  for (const f of validFiles) {
+    if (f.webkitRelativePath) {
+      const parts = f.webkitRelativePath.split('/');
+      if (parts.length > 1 && parts[0].trim()) {
+        folderName = parts[0].trim();
+        break;
+      }
+    }
+  }
+
+  return { files: validFiles, title: folderName };
 }

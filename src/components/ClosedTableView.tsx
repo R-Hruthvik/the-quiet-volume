@@ -4,7 +4,9 @@ import { computeDesktopTableLayout, getPhysicalBookMetrics } from '../lib/dimens
 import { getCoverMaterialClass } from '../lib/identity';
 import { getLightingSpec } from '../lib/lighting';
 import { formatShortDate } from '../lib/parser';
+import { downloadLibraryBackup } from '../lib/storage';
 import { ColophonMark } from './BookOrnaments';
+import { BindingChoiceModal } from './BindingChoiceModal';
 import type { BookSizeId, BookVolume, LightingMode } from '../types/book';
 
 export interface PendingCollectionPrompt {
@@ -66,6 +68,7 @@ export function ClosedTableView({
   const [rightPairHovered, setRightPairHovered] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogFilter, setCatalogFilter] = useState('');
+  const [bindingModalOpen, setBindingModalOpen] = useState(false);
 
   useEffect(() => {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
@@ -130,8 +133,16 @@ export function ClosedTableView({
     e.target.value = '';
   };
 
+  const handleBackupLibrary = async () => {
+    try {
+      await downloadLibraryBackup();
+    } catch (err) {
+      console.error('Failed to export library backup:', err);
+    }
+  };
+
   const triggerFilePicker = () => {
-    fileInputRef.current?.click();
+    setBindingModalOpen(true);
   };
 
   const triggerMultiFilePicker = () => {
@@ -552,6 +563,17 @@ export function ClosedTableView({
               <div className="mt-7 flex w-full max-w-[94vw] sm:max-w-2xl flex-wrap items-center justify-center gap-2 sm:gap-x-5 sm:gap-y-2 px-2">
                 <button
                   type="button"
+                  onClick={() => setBindingModalOpen(true)}
+                  className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+                  style={{ color: lightSpec.tableInk }}
+                >
+                  Bind manuscript…
+                </button>
+                <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                  ·
+                </span>
+                <button
+                  type="button"
                   onClick={triggerFolderPicker}
                   className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
                   style={{ color: lightSpec.tableInk }}
@@ -568,6 +590,17 @@ export function ClosedTableView({
                   style={{ color: lightSpec.tableInk }}
                 >
                   {viewport.w < 640 ? 'Select multiple files' : 'Select multiple files (Ctrl+A)'}
+                </button>
+                <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBackupLibrary}
+                  className="inline-flex min-h-[44px] items-center justify-center px-3 py-2.5 font-hand-kalam text-sm tracking-wide opacity-80 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+                  style={{ color: lightSpec.tableInk }}
+                >
+                  Backup library
                 </button>
                 <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
                   ·
@@ -746,6 +779,28 @@ export function ClosedTableView({
               <div className="mt-6 flex flex-wrap items-center gap-3 pr-1 font-hand-kalam text-xs">
                 <button
                   type="button"
+                  onClick={() => setBindingModalOpen(true)}
+                  className="opacity-70 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
+                  style={{ color: lightSpec.tableInk }}
+                >
+                  Bind new book
+                </button>
+                <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                  ·
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBackupLibrary}
+                  className="opacity-70 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
+                  style={{ color: lightSpec.tableInk }}
+                >
+                  Backup library
+                </button>
+                <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                  ·
+                </span>
+                <button
+                  type="button"
                   onClick={triggerFolderPicker}
                   className="opacity-70 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
                   style={{ color: lightSpec.tableInk }}
@@ -762,17 +817,6 @@ export function ClosedTableView({
                   style={{ color: lightSpec.tableInk }}
                 >
                   Select files (Ctrl+A)
-                </button>
-                <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
-                  ·
-                </span>
-                <button
-                  type="button"
-                  onClick={triggerFilePicker}
-                  className="opacity-70 underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-100"
-                  style={{ color: lightSpec.tableInk }}
-                >
-                  Bind file
                 </button>
                 <span aria-hidden="true" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
                   ·
@@ -801,6 +845,28 @@ export function ClosedTableView({
             style={{ color: lightSpec.tableInk }}
           >
             Settings book
+          </button>
+          <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={() => setBindingModalOpen(true)}
+            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+            style={{ color: lightSpec.tableInk }}
+          >
+            Bind new book
+          </button>
+          <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={handleBackupLibrary}
+            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+            style={{ color: lightSpec.tableInk }}
+          >
+            Backup library
           </button>
           <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
             ·
@@ -968,6 +1034,12 @@ export function ClosedTableView({
           </div>
         </div>
       )}
+
+      <BindingChoiceModal
+        isOpen={bindingModalOpen}
+        onClose={() => setBindingModalOpen(false)}
+        onBind={(files, title) => onSelectFiles(files, title)}
+      />
     </div>
   );
 }

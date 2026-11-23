@@ -10,7 +10,54 @@ const DB_VERSION = 1;
 const STORE_VOLUMES = 'volumes';
 const SETTINGS_KEY = 'quiet-volume-settings-v1';
 const ACTIVE_BOOK_KEY = 'quiet-volume-active-id-v1';
+const CATALOG_KEY = 'quiet-volume-catalog-v1';
 const FALLBACK_VOLUMES_KEY = 'quiet-volume-volumes-fallback-v1';
+
+export interface VolumeCatalogStub {
+  id: string;
+  title: string;
+  author?: string;
+  pageCount: number;
+  lastOpenedAt: number;
+}
+
+export async function ensurePersistentStorage(): Promise<boolean> {
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.storage &&
+    typeof navigator.storage.persist === 'function'
+  ) {
+    try {
+      const isPersisted = await navigator.storage.persisted();
+      if (!isPersisted) {
+        return await navigator.storage.persist();
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+export function loadCatalog(): VolumeCatalogStub[] {
+  try {
+    const raw = localStorage.getItem(CATALOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCatalog(stubs: VolumeCatalogStub[]): void {
+  try {
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(stubs));
+  } catch {
+    // ignore
+  }
+}
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
   pageMode: 'two-page',
@@ -102,12 +149,23 @@ export async function saveVolume(volume: BookVolume): Promise<void> {
       }
     });
   }
+
+  // Store only lightweight metadata stub in localStorage (<500 bytes per book)
+  // to prevent mobile 5MB localStorage overflow while keeping full books in IndexedDB
   try {
-    const existing = loadFallbackVolumes().filter((v) => v.id !== volume.id);
-    existing.unshift(volume);
-    localStorage.setItem(FALLBACK_VOLUMES_KEY, JSON.stringify(existing));
+    const pageCount = (volume as any).pageCount || Math.max(1, volume.lastPageIndex + 1);
+    const stub: VolumeCatalogStub = {
+      id: volume.id,
+      title: volume.title,
+      author: volume.author,
+      pageCount,
+      lastOpenedAt: volume.lastOpenedAt,
+    };
+    const catalog = loadCatalog().filter((v) => v.id !== volume.id);
+    catalog.unshift(stub);
+    saveCatalog(catalog);
   } catch {
-    // Ignore quota errors in fallback mirror
+    // Ignore quota errors in catalog stub
   }
 }
 
@@ -126,8 +184,14 @@ export async function removeVolume(volumeId: string): Promise<void> {
     });
   }
   try {
+    const catalog = loadCatalog().filter((v) => v.id !== volumeId);
+    saveCatalog(catalog);
     const remaining = loadFallbackVolumes().filter((v) => v.id !== volumeId);
-    localStorage.setItem(FALLBACK_VOLUMES_KEY, JSON.stringify(remaining));
+    if (remaining.length > 0) {
+      localStorage.setItem(FALLBACK_VOLUMES_KEY, JSON.stringify(remaining));
+    } else {
+      localStorage.removeItem(FALLBACK_VOLUMES_KEY);
+    }
   } catch {
     // ignore
   }
@@ -148,10 +212,32 @@ export async function clearAllVolumes(): Promise<void> {
     });
   }
   try {
+    localStorage.removeItem(CATALOG_KEY);
     localStorage.removeItem(FALLBACK_VOLUMES_KEY);
     localStorage.removeItem(ACTIVE_BOOK_KEY);
   } catch {
     // ignore
+  }
+}
+
+export async function downloadLibraryBackup(): Promise<void> {
+  const volumes = await loadVolumes();
+  const backup = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    volumeCount: volumes.length,
+    volumes,
+  };
+  const json = JSON.stringify(backup, null, 2);
+  if (typeof document !== 'undefined') {
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.download = `quiet-volume-library-backup-${dateStr}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
 
