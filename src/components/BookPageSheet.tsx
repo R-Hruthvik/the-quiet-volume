@@ -346,8 +346,8 @@ export function BookPageSheet({
             openMarginEditor(block.id);
           }}
           aria-label="Write margin note or underline paragraph"
-          className={`absolute top-0.5 z-10 h-5 w-5 rounded-full text-center font-hand-caveat text-xs opacity-0 transition-opacity group-hover:opacity-65 hover:!opacity-100 focus-visible:opacity-100 ${
-            side === 'left' ? '-left-4' : '-right-4'
+          className={`absolute top-0.5 z-10 flex h-7 w-7 sm:h-5 sm:w-5 items-center justify-center rounded-full text-center font-hand-caveat text-xs opacity-40 transition-opacity sm:opacity-0 sm:group-hover:opacity-65 hover:!opacity-100 focus-visible:opacity-100 before:absolute before:-inset-2 before:content-[''] touch-manipulation ${
+            side === 'left' ? '-left-3.5 sm:-left-4' : '-right-3.5 sm:-right-4'
           }`}
           style={{ color: paper.pencilInk }}
           title="Annotate in margin"
@@ -463,7 +463,7 @@ export function BookPageSheet({
 
         {isEditing && (
           <div
-            className="mt-1.5 rounded-[2px] border p-2.5 shadow-sm"
+            className="mt-1.5 w-full max-w-full box-border rounded-[2px] border p-2.5 shadow-sm"
             style={{
               backgroundColor: paper.pageBg,
               borderColor: `${paper.ink}28`,
@@ -488,7 +488,7 @@ export function BookPageSheet({
                   onClick={() =>
                     onSetHighlight(block.id, highlightKind === opt.id ? null : opt.id)
                   }
-                  className="px-1.5 py-0.5 transition-opacity hover:opacity-100"
+                  className="inline-flex min-h-[36px] sm:min-h-[44px] items-center justify-center rounded-[2px] px-2.5 py-1.5 transition-opacity hover:opacity-100 touch-manipulation cursor-pointer"
                   style={{
                     textDecoration: highlightKind === opt.id ? 'underline' : 'none',
                     opacity: highlightKind === opt.id ? 1 : 0.65,
@@ -509,7 +509,7 @@ export function BookPageSheet({
               value={draftNote}
               onChange={(e) => setDraftNote(e.target.value)}
               placeholder="Write in the margin…"
-              className="w-full resize-none border-t bg-transparent pt-1.5 font-hand-kalam text-sm leading-snug focus:outline-none"
+              className="w-full max-w-full box-border resize-none border-t bg-transparent p-2 pt-2.5 font-hand-kalam text-sm leading-snug focus:outline-none"
               style={{ borderColor: `${paper.ink}18`, color: paper.ink }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -521,10 +521,11 @@ export function BookPageSheet({
                 }
               }}
             />
-            <div className="mt-1 flex items-center justify-end gap-3 font-hand-patrick text-xs">
+            <div className="mt-1 flex flex-wrap items-center justify-end gap-2 font-hand-patrick text-xs">
               <button
                 type="button"
                 onClick={() => setEditingBlockId(null)}
+                className="inline-flex min-h-[36px] sm:min-h-[44px] items-center justify-center px-2.5 py-1.5 touch-manipulation cursor-pointer hover:opacity-100 opacity-80"
                 style={{ color: paper.pencilInk }}
               >
                 Cancel
@@ -532,10 +533,11 @@ export function BookPageSheet({
               <button
                 type="button"
                 onClick={() => commitNote(block.id)}
-                className="underline decoration-dotted underline-offset-4"
+                className="inline-flex min-h-[36px] sm:min-h-[44px] items-center justify-center px-2.5 py-1.5 underline decoration-dotted underline-offset-4 touch-manipulation cursor-pointer hover:opacity-100"
                 style={{ color: paper.ink }}
+                title="Save note"
               >
-                Keep note
+                Save note
               </button>
             </div>
           </div>
@@ -656,7 +658,7 @@ export function BookPageSheet({
               : `Dog-ear bookmark page ${page.displayNumber}`
           }
           aria-pressed={isDogEared}
-          className={`group absolute top-0 z-20 h-10 w-10 focus-visible:opacity-100 ${
+          className={`group absolute top-0 z-20 h-11 w-11 min-h-[44px] min-w-[44px] touch-manipulation focus-visible:opacity-100 ${
             side === 'left' ? 'left-0' : 'right-0'
           }`}
           title={isDogEared ? 'Unfold corner bookmark' : 'Fold corner to bookmark'}
@@ -778,7 +780,7 @@ export function BookPageSheet({
               </header>
             )}
 
-            <div className="flex-1 min-h-0 overflow-hidden pr-0.5">
+            <div className="flex-1 min-h-0 overflow-visible pr-0.5">
               {(page.blocks || []).map(renderBlockContent)}
             </div>
 

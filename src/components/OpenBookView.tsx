@@ -642,14 +642,19 @@ export function OpenBookView({
       {/* Floating Quick Navigation HUD bar — docked quietly at the bottom right so it NEVER covers reading text */}
       <nav
         aria-label="Book quick navigation"
-        className="fixed bottom-3.5 right-4 sm:right-6 z-30 flex items-center gap-1.5 rounded-full border border-black/15 bg-[#F6F1E7]/95 px-3 py-1 font-hand-patrick text-xs text-[#2A231C] shadow-md backdrop-blur-xs transition-opacity hover:opacity-100 opacity-75"
+        className={`fixed z-30 flex items-center gap-1 sm:gap-1.5 rounded-full border border-black/15 bg-[#F6F1E7]/95 px-2 sm:px-3 py-1 font-hand-patrick text-xs text-[#2A231C] shadow-md backdrop-blur-xs transition-opacity hover:opacity-100 opacity-85 sm:opacity-75 ${
+          viewport.w < 640
+            ? 'bottom-3 inset-x-3 mx-auto w-fit max-w-[96vw] overflow-x-auto justify-center'
+            : 'bottom-3.5 right-4 sm:right-6'
+        }`}
       >
         {hudCollapsed ? (
           <button
             type="button"
             onClick={() => setHudCollapsed(false)}
             title="Expand quick navigation"
-            className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-black/8 rounded-[3px] cursor-pointer"
+            aria-label="Expand quick navigation"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 px-3 py-2 rounded-full hover:bg-black/8 transition-colors cursor-pointer touch-manipulation"
           >
             <span>📖</span>
             <span>Nav</span>
@@ -660,7 +665,7 @@ export function OpenBookView({
               type="button"
               onClick={jumpToFirstPage}
               title="Jump to first page (Home key)"
-              className="rounded-[3px] px-2 py-0.5 hover:bg-black/8 transition-colors cursor-pointer"
+              className="flex min-h-[40px] items-center justify-center rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap"
             >
               First Page
             </button>
@@ -669,7 +674,7 @@ export function OpenBookView({
               type="button"
               onClick={jumpToToc}
               title="Jump to Table of Contents (T key)"
-              className="rounded-[3px] px-2 py-0.5 hover:bg-black/8 transition-colors font-medium cursor-pointer"
+              className="flex min-h-[40px] items-center justify-center rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors font-medium cursor-pointer touch-manipulation whitespace-nowrap"
             >
               Contents
             </button>
@@ -678,7 +683,7 @@ export function OpenBookView({
               type="button"
               onClick={jumpToPrevChapter}
               title="Jump to previous chapter ([ or P key)"
-              className="rounded-[3px] px-2 py-0.5 hover:bg-black/8 transition-colors cursor-pointer"
+              className="flex min-h-[40px] items-center justify-center rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap"
             >
               ◀ Prev Ch
             </button>
@@ -686,16 +691,31 @@ export function OpenBookView({
               type="button"
               onClick={jumpToNextChapter}
               title="Jump to next chapter (] or N key)"
-              className="rounded-[3px] px-2 py-0.5 hover:bg-black/8 transition-colors cursor-pointer"
+              className="flex min-h-[40px] items-center justify-center rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap"
             >
               Next Ch ▶
             </button>
             <span aria-hidden="true" className="opacity-30">|</span>
             <button
               type="button"
+              onClick={() => onToggleLiveCameraBar(!liveCameraBarOpen)}
+              title="Toggle live camera & zoom (C key)"
+              aria-label="Toggle live camera and zoom"
+              aria-pressed={liveCameraBarOpen}
+              className={`flex min-h-[40px] items-center justify-center gap-1 rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap ${
+                liveCameraBarOpen ? 'bg-black/8 font-medium underline decoration-dotted' : ''
+              }`}
+            >
+              <span>📷</span>
+              <span>Zoom</span>
+            </button>
+            <span aria-hidden="true" className="opacity-30">|</span>
+            <button
+              type="button"
               onClick={() => setHudCollapsed(true)}
               title="Minimize navigation pill"
-              className="rounded-[3px] px-1 py-0.5 hover:bg-black/8 transition-colors opacity-60 hover:opacity-100 cursor-pointer text-[10px]"
+              aria-label="Close quick navigation"
+              className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-[3px] p-2 hover:bg-black/8 transition-colors opacity-60 hover:opacity-100 cursor-pointer touch-manipulation text-xs"
             >
               ✕
             </button>
@@ -921,17 +941,24 @@ export function OpenBookView({
                   ? 'Toggle read aloud playback controls on ribbon'
                   : 'Silk bookmark ribbon — tap to glimpse page number'
               }
-              className="absolute top-0 z-20 w-3.5 transition-all duration-700 ease-out focus-visible:opacity-100"
+              className="group absolute top-0 z-20 flex justify-center w-6 sm:w-3.5 transition-all duration-700 ease-out focus-visible:opacity-100 before:absolute before:-inset-3 before:content-[''] touch-manipulation cursor-pointer"
               style={{
                 left: ribbonSlidAside ? 'calc(50% - 7px)' : 'calc(50% + 20px)',
                 height: isReadingAloud ? '46px' : '34px',
-                backgroundColor: volume.identity.ribbonColor,
-                clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
-                boxShadow: '0 3px 6px rgba(0,0,0,0.22)',
-                opacity: 0.92,
               }}
               title={isReadingAloud ? 'Playback controls' : 'Reading ribbon'}
-            />
+            >
+              <span
+                aria-hidden="true"
+                className="block h-full w-full"
+                style={{
+                  backgroundColor: volume.identity.ribbonColor,
+                  clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
+                  boxShadow: '0 3px 6px rgba(0,0,0,0.22)',
+                  opacity: 0.92,
+                }}
+              />
+            </button>
 
             {/* Temporary Ribbon Read-Aloud Controls */}
             {isReadingAloud && showRibbonControls && (
