@@ -162,7 +162,7 @@ export type EnvironmentSurface =
   | 'clear-desk'
   | 'dark-space';
 
-export type TTSProvider = 'deepgram' | 'elevenlabs' | 'webspeech';
+export type TTSProvider = 'deepgram' | 'elevenlabs' | 'groq' | 'webspeech';
 export type TTSAudioMode = 'recorded' | 'live';
 
 export interface TTSVoiceOption {

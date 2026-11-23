@@ -69,8 +69,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Text exceeds maximum limit of 1,500 characters per request' });
   }
 
-  const deepgramKey = process.env.DEEPGRAM_API_KEY || '';
-  const elevenKey = process.env.ELEVENLABS_API_KEY || '';
+  const deepgramKey = (process.env.DEEPGRAM_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+  const elevenKey = (process.env.ELEVENLABS_API_KEY || '').replace(/^["']|["']$/g, '').trim();
+  const groqKey = (process.env.GROQ_API_KEY || '').replace(/^["']|["']$/g, '').trim();
 
   // 1. ElevenLabs Provider
   if (provider === 'elevenlabs') {
@@ -116,7 +117,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // 2. Default Provider: Deepgram Aura
+  // 2. Groq Orpheus Provider
+  if (provider === 'groq') {
+    if (!groqKey) {
+      return res.status(503).json({ error: 'Groq API key not configured on server' });
+    }
+    const model = voice || 'canopylabs/orpheus-v1-english';
+    const payload = JSON.stringify({
+      model,
+      input: text.slice(0, 200),
+      voice: 'autumn',
+    });
+
+    const upstream = https.request(
+      {
+        hostname: 'api.groq.com',
+        port: 443,
+        path: '/openai/v1/audio/speech',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (upRes) => {
+        const isOk = (upRes.statusCode || 200) < 400;
+        res.writeHead(upRes.statusCode || 200, {
+          'Content-Type': isOk ? 'audio/wav' : (upRes.headers['content-type'] || 'application/json'),
+          'Cache-Control': isOk ? 'public, max-age=86400, s-maxage=86400' : 'no-cache',
+        });
+        upRes.pipe(res);
+      }
+    );
+
+    upstream.on('error', (err) => {
+      if (!res.headersSent) {
+        res.status(502).json({ error: `Upstream error: ${err.message}` });
+      }
+    });
+    upstream.write(payload);
+    upstream.end();
+    return;
+  }
+
+  // 3. Default Provider: Deepgram Aura
   if (!deepgramKey) {
     return res.status(503).json({ error: 'Deepgram API key not configured on server' });
   }

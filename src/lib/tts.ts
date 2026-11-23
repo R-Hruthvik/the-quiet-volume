@@ -81,6 +81,18 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     description: 'Clear, elegant narrative tone with delicate cadence shifts.',
   },
   {
+    id: 'groq-orpheus',
+    provider: 'groq',
+    voice: 'canopylabs/orpheus-v1-english',
+    name: 'Groq Orpheus (Autumn)',
+    gender: 'Female',
+    style: 'Expressive Conversational',
+    costCategory: 'Cost-Effective',
+    allowanceInfo: 'Free Tier Available on Groq (Instant synthesis)',
+    previewUrl: '',
+    description: 'Ultra-low-latency neural voice hosted on Groq LPU engine.',
+  },
+  {
     id: 'webspeech-edge-natural',
     provider: 'webspeech',
     voice: 'edge-natural',
