@@ -242,6 +242,9 @@ export function SettingsBookView({
   const currentSizeSpec = BOOK_SIZES[settings.bookSize] || BOOK_SIZES['a5-notebook'];
   const lightIdx = LIGHTING_ORDER.indexOf(settings.lighting);
   const searchHits = useMemo(() => searchBook(pages, searchQuery), [pages, searchQuery]);
+  const currentChapter = SETTINGS_TOC.find((c) => c.pageIndex === clampedPageIndex);
+  const chapterTitle =
+    currentChapter?.title || (clampedPageIndex === 0 ? 'Companion Handbook' : 'Contents');
 
   const triggerLeafFlip = useCallback(
     (dir: 'forward' | 'backward') => {
@@ -466,7 +469,7 @@ export function SettingsBookView({
 
   const renderPageHeader = (displayNum: number, sectionLabel: string, side: 'left' | 'right') => (
     <header
-      className={`mb-3 flex shrink-0 items-baseline justify-between border-b pb-1.5 font-hand-patrick text-[11px] ${
+      className={`mb-3 flex shrink-0 items-center justify-between border-b pb-1 font-hand-patrick text-[11px] ${
         side === 'left' ? 'flex-row-reverse' : 'flex-row'
       }`}
       style={{
@@ -474,18 +477,32 @@ export function SettingsBookView({
         color: paper.pencilInk,
       }}
     >
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className="truncate opacity-80">{sectionLabel}</span>
+      <div className="flex items-center gap-1 min-w-0">
+        <span className="truncate opacity-80 mr-1">{sectionLabel}</span>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            goToPage(0);
+            goToPage(1);
           }}
-          className="shrink-0 underline decoration-dotted underline-offset-2 opacity-65 transition-opacity hover:opacity-100"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center shrink-0 px-2 underline decoration-dotted underline-offset-2 opacity-75 transition-opacity hover:opacity-100 active:opacity-100 cursor-pointer"
           style={{ color: paper.pencilInk }}
+          aria-label="Go to contents"
         >
           contents
+        </button>
+        <span aria-hidden="true" className="opacity-40 select-none">·</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCloseSettingsBook();
+          }}
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center shrink-0 px-2 underline decoration-dotted underline-offset-2 opacity-75 transition-opacity hover:opacity-100 active:opacity-100 cursor-pointer"
+          style={{ color: paper.pencilInk }}
+          aria-label="Close handbook"
+        >
+          Close
         </button>
       </div>
       <span className="shrink-0 tabular-nums opacity-85">p. {displayNum}</span>
@@ -499,7 +516,7 @@ export function SettingsBookView({
       paddingLeft: `${padLeft}px`,
       paddingRight: `${padRight}px`,
       paddingTop: '18px',
-      paddingBottom: '18px',
+      paddingBottom: viewport.w < 768 ? '68px' : '18px',
     };
 
     const cardSelected = paper.isDarkPaper
@@ -545,12 +562,12 @@ export function SettingsBookView({
               )}
             </div>
 
-            <div className="w-full max-w-[260px] space-y-3">
-              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-hand-kalam text-[15px]">
+            <div className="w-full max-w-[280px] space-y-3">
+              <div className="flex flex-wrap items-center justify-center gap-2 font-hand-kalam text-[15px]">
                 <button
                   type="button"
                   onClick={handleCloseSettingsBook}
-                  className="underline decoration-[#8D6C47] decoration-2 underline-offset-4 transition-opacity hover:opacity-75"
+                  className="flex min-h-[44px] items-center justify-center px-3 text-center underline decoration-[#8D6C47] decoration-2 underline-offset-4 transition-opacity hover:opacity-75 active:opacity-60 cursor-pointer"
                   style={{ color: paper.ink }}
                 >
                   {returnTarget === 'reading' ? 'Return to reading' : 'Close to desk'}
@@ -559,7 +576,7 @@ export function SettingsBookView({
                   <button
                     type="button"
                     onClick={onCloseAllToTable}
-                    className="underline decoration-dotted underline-offset-4 opacity-75 transition-opacity hover:opacity-100"
+                    className="flex min-h-[44px] items-center justify-center px-3 text-center underline decoration-dotted underline-offset-4 opacity-75 transition-opacity hover:opacity-100 active:opacity-60 cursor-pointer"
                     style={{ color: paper.mutedInk }}
                   >
                     Put book on desk
@@ -568,21 +585,25 @@ export function SettingsBookView({
               </div>
 
               {volume && (
-                <button
-                  type="button"
-                  onClick={onAdjustCameraLive}
-                  className="font-hand-patrick text-xs underline decoration-dotted underline-offset-4 opacity-80 transition-opacity hover:opacity-100"
-                  style={{ color: paper.pencilInk }}
-                >
-                  Adjust camera live on open page
-                </button>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={onAdjustCameraLive}
+                    className="flex min-h-[44px] items-center justify-center px-3 text-center font-hand-patrick text-xs underline decoration-dotted underline-offset-4 opacity-80 transition-opacity hover:opacity-100 active:opacity-60 cursor-pointer"
+                    style={{ color: paper.pencilInk }}
+                  >
+                    Adjust camera live on open page
+                  </button>
+                </div>
               )}
 
               <p
-                className="pt-2 font-hand-patrick text-[11px] opacity-60"
+                className="pt-2 font-hand-patrick text-[11px] opacity-60 text-center"
                 style={{ color: paper.pencilInk }}
               >
-                Keys: ← → turn pages · S return · / search · Esc close
+                {viewport.w < 640
+                  ? 'Swipe or tap Next to browse settings'
+                  : 'Keys: ← → turn pages · S return · / search · Esc close'}
               </p>
             </div>
           </div>
@@ -600,35 +621,37 @@ export function SettingsBookView({
             </div>
 
             <nav aria-label="Settings book contents" className="mt-4 flex-1">
-              <ol className="space-y-3">
+              <ol className="space-y-1.5">
                 {SETTINGS_TOC.map((entry) => (
                   <li key={entry.pageIndex}>
                     <button
                       type="button"
                       onClick={() => goToPage(entry.pageIndex)}
-                      className="group flex w-full items-baseline justify-between gap-2 text-left transition-opacity hover:opacity-70"
+                      className="group flex min-h-[44px] w-full flex-col justify-center rounded-[3px] py-2.5 px-3 text-left transition-all hover:bg-black/[0.04] active:bg-black/[0.08] active:scale-[0.99] cursor-pointer"
                     >
-                      <span className="font-hand-kalam text-[15px] leading-snug">
-                        {entry.title}
-                      </span>
+                      <div className="flex w-full items-baseline justify-between gap-2">
+                        <span className="font-hand-kalam text-[15px] leading-snug group-hover:opacity-85">
+                          {entry.title}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="flex-1 border-b border-dotted"
+                          style={{ borderColor: `${paper.ink}25` }}
+                        />
+                        <span
+                          className="shrink-0 font-hand-patrick text-xs tabular-nums"
+                          style={{ color: paper.pencilInk }}
+                        >
+                          {entry.displayNum}
+                        </span>
+                      </div>
                       <span
-                        aria-hidden="true"
-                        className="flex-1 border-b border-dotted"
-                        style={{ borderColor: `${paper.ink}25` }}
-                      />
-                      <span
-                        className="shrink-0 font-hand-patrick text-xs tabular-nums"
+                        className="block font-hand-patrick text-[11px] opacity-65 group-hover:opacity-80"
                         style={{ color: paper.pencilInk }}
                       >
-                        {entry.displayNum}
+                        {entry.note}
                       </span>
                     </button>
-                    <span
-                      className="block font-hand-patrick text-[11px] opacity-65"
-                      style={{ color: paper.pencilInk }}
-                    >
-                      {entry.note}
-                    </span>
                   </li>
                 ))}
               </ol>
@@ -666,7 +689,7 @@ export function SettingsBookView({
                     type="button"
                     onClick={() => onUpdateSettings({ bookSize: sizeId })}
                     aria-pressed={selected}
-                    className={`flex flex-col items-start rounded-[3px] border p-2.5 text-left transition-all ${
+                    className={`flex min-h-[44px] flex-col items-start rounded-[3px] border p-2.5 text-left transition-all cursor-pointer active:scale-[0.99] ${
                       selected ? cardSelected : cardIdle
                     }`}
                   >
@@ -787,7 +810,7 @@ export function SettingsBookView({
                       type="button"
                       onClick={() => onUpdateSettings({ paperRuling: opt.id })}
                       aria-pressed={selected}
-                      className={`flex items-center gap-2.5 rounded-[3px] border px-2.5 py-2 text-left transition-all ${
+                      className={`flex min-h-[44px] items-center gap-2.5 rounded-[3px] border px-2.5 py-2 text-left transition-all cursor-pointer active:scale-[0.99] ${
                         selected ? cardSelected : cardIdle
                       }`}
                     >
@@ -1192,7 +1215,7 @@ export function SettingsBookView({
                       type="button"
                       onClick={() => onUpdateSettings({ lighting: mode, autoLighting: false })}
                       aria-pressed={active}
-                      className="relative z-10 flex flex-col items-center gap-1 px-0.5 text-center transition-transform hover:-translate-y-0.5"
+                      className="relative z-10 flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1 px-0.5 text-center transition-transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
                     >
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-full border text-sm transition-colors ${
@@ -1235,7 +1258,7 @@ export function SettingsBookView({
                       type="button"
                       onClick={() => onUpdateSettings({ paper: stockId })}
                       aria-pressed={selected}
-                      className={`relative rounded-[2px] border px-3 pt-3.5 pb-2.5 text-left shadow-xs transition-transform hover:-translate-y-0.5 ${
+                      className={`relative flex min-h-[44px] flex-col justify-center rounded-[2px] border px-3 pt-3.5 pb-2.5 text-left shadow-xs transition-transform hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer ${
                         stock.isDarkPaper ? 'texture-paper-dark' : 'texture-paper-grain'
                       } ${selected ? 'ring-2 ring-[#8A6A42]' : ''}`}
                       style={{
@@ -1271,7 +1294,7 @@ export function SettingsBookView({
               </h2>
               {volume ? (
                 <>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     {COVER_SWATCHES.map((sw) => {
                       const selected = volume.identity.coverColor === sw.coverColor;
                       return (
@@ -1288,11 +1311,16 @@ export function SettingsBookView({
                           aria-label={`Cover color: ${sw.name}`}
                           aria-pressed={selected}
                           title={sw.name}
-                          className={`h-7 w-7 rounded-[2px] border transition-transform hover:scale-105 ${
-                            selected ? 'ring-2 ring-[#7C5E3E] ring-offset-1' : 'border-black/20'
-                          }`}
-                          style={{ backgroundColor: sw.coverColor }}
-                        />
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center p-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-7 w-7 rounded-[2px] border block ${
+                              selected ? 'ring-2 ring-[#7C5E3E] ring-offset-1' : 'border-black/20'
+                            }`}
+                            style={{ backgroundColor: sw.coverColor }}
+                          />
+                        </button>
                       );
                     })}
                     <span className="mx-0.5 h-5 w-px bg-current opacity-20" aria-hidden="true" />
@@ -1306,47 +1334,52 @@ export function SettingsBookView({
                           aria-label={`Ribbon color: ${rb.name}`}
                           aria-pressed={selected}
                           title={`Ribbon: ${rb.name}`}
-                          className={`h-7 w-3.5 rounded-b-[1px] transition-transform hover:scale-105 ${
-                            selected ? 'ring-2 ring-[#7C5E3E] ring-offset-1' : ''
-                          }`}
-                          style={{
-                            backgroundColor: rb.color,
-                            clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
-                          }}
-                        />
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center p-1 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-7 w-4 rounded-b-[1px] block ${
+                              selected ? 'ring-2 ring-[#7C5E3E] ring-offset-1' : ''
+                            }`}
+                            style={{
+                              backgroundColor: rb.color,
+                              clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)',
+                            }}
+                          />
+                        </button>
                       );
                     })}
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-x-3.5 gap-y-1 font-hand-patrick text-xs">
+                  <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 font-hand-patrick text-xs">
                     {COVER_MATERIALS.map((mat) => (
                       <button
                         key={mat.id}
                         type="button"
                         onClick={() => onUpdateVolumeIdentity({ coverMaterial: mat.id })}
-                        className={
+                        className={`flex min-h-[44px] items-center justify-center px-2 cursor-pointer transition-opacity ${
                           volume.identity.coverMaterial === mat.id
                             ? 'underline decoration-[#7C5E3E] decoration-2 underline-offset-4'
-                            : 'opacity-70 hover:opacity-100'
-                        }
+                            : 'opacity-70 hover:opacity-100 active:opacity-100'
+                        }`}
                       >
                         {mat.label}
                       </button>
                     ))}
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-hand-patrick text-[11.5px] opacity-80">
-                    <span className="opacity-65">Endpaper:</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-hand-patrick text-[11.5px] opacity-80">
+                    <span className="opacity-65 mr-1">Endpaper:</span>
                     {ENDPAPER_PATTERNS.map((pat) => (
                       <button
                         key={pat.id}
                         type="button"
                         onClick={() => onUpdateVolumeIdentity({ endpaperPattern: pat.id })}
-                        className={
+                        className={`flex min-h-[44px] items-center justify-center px-1.5 cursor-pointer transition-opacity ${
                           volume.identity.endpaperPattern === pat.id
                             ? 'underline decoration-dotted underline-offset-2 opacity-100'
-                            : 'opacity-70 hover:opacity-100'
-                        }
+                            : 'opacity-70 hover:opacity-100 active:opacity-100'
+                        }`}
                       >
                         {pat.label}
                       </button>
@@ -1374,7 +1407,7 @@ export function SettingsBookView({
                       type="button"
                       onClick={() => onUpdateSettings({ environment: envId })}
                       aria-pressed={selected}
-                      className={`flex items-center gap-2.5 rounded-[3px] border px-2.5 py-2 text-left transition-all ${
+                      className={`flex min-h-[44px] items-center gap-2.5 rounded-[3px] border px-2.5 py-2 text-left transition-all cursor-pointer active:scale-[0.99] ${
                         selected ? cardSelected : cardIdle
                       }`}
                     >
@@ -1415,7 +1448,7 @@ export function SettingsBookView({
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="font-hand-patrick text-xs opacity-65 hover:opacity-100"
+                      className="flex min-h-[44px] min-w-[44px] items-center justify-center font-hand-patrick text-xs opacity-65 hover:opacity-100 cursor-pointer"
                     >
                       clear
                     </button>
@@ -1439,13 +1472,13 @@ export function SettingsBookView({
                 >
                   {searchQuery.trim().length >= 2 ? (
                     searchHits.length > 0 ? (
-                      <ul className="space-y-2.5">
+                      <ul className="space-y-1">
                         {searchHits.map((hit, idx) => (
                           <li key={`${hit.pageIndex}-${hit.blockId}-${idx}`}>
                             <button
                               type="button"
                               onClick={() => onJumpToPageIndex(hit.pageIndex, hit.blockId)}
-                              className="flex w-full items-baseline gap-2.5 text-left transition-opacity hover:opacity-70"
+                              className="flex min-h-[44px] w-full items-baseline gap-2.5 text-left transition-opacity hover:opacity-70 cursor-pointer"
                             >
                               <span className="w-10 shrink-0 font-hand-patrick text-xs tabular-nums opacity-75">
                                 p. {hit.displayNumber}
@@ -1494,7 +1527,7 @@ export function SettingsBookView({
                 <button
                   type="button"
                   onClick={onToggleReadAloud}
-                  className="rounded-[3px] border border-black/20 bg-black/5 px-2.5 py-0.5 font-hand-kalam text-xs transition-colors hover:bg-black/10 cursor-pointer"
+                  className="flex min-h-[44px] items-center justify-center rounded-[3px] border border-black/20 bg-black/5 px-2.5 py-1 font-hand-kalam text-xs transition-colors hover:bg-black/10 active:bg-black/20 cursor-pointer"
                 >
                   {isReadingAloud ? '⏹ Stop reading' : '▶ Read volume aloud'}
                 </button>
@@ -1524,10 +1557,10 @@ export function SettingsBookView({
                           ttsVoice: opt.voice,
                         })
                       }
-                      className={`flex flex-col gap-1 rounded-[3px] border p-2 transition-all cursor-pointer ${
+                      className={`flex min-h-[44px] flex-col justify-center gap-1 rounded-[3px] border p-2.5 transition-all cursor-pointer ${
                         isSelected
                           ? 'border-[#7C5E3E] bg-[#7C5E3E]/10 ring-1 ring-[#7C5E3E]/30'
-                          : 'border-black/15 hover:border-black/30 bg-black/[0.02]'
+                          : 'border-black/15 hover:border-black/30 active:bg-black/5 bg-black/[0.02]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1536,7 +1569,7 @@ export function SettingsBookView({
                             {opt.name}
                           </span>
                           <span
-                            className={`rounded-[2px] px-1.5 py-0.2 font-book-mono text-[9px] uppercase tracking-wider ${
+                            className={`rounded-[2px] px-1.5 py-0.5 font-book-mono text-[9px] uppercase tracking-wider ${
                               opt.provider === 'deepgram'
                                 ? 'bg-emerald-700/15 text-emerald-900 font-semibold'
                                 : opt.provider === 'elevenlabs'
@@ -1556,10 +1589,10 @@ export function SettingsBookView({
                               handlePlayPreview(opt);
                             }}
                             title={isPlaying ? 'Pause voice sample' : 'Listen to voice sample'}
-                            className={`rounded-[2px] border px-2 py-0.5 font-hand-patrick text-[11px] transition-colors cursor-pointer ${
+                            className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[2px] border px-2.5 py-1 font-hand-patrick text-[11px] transition-colors cursor-pointer ${
                               isPlaying
                                 ? 'border-amber-700 bg-amber-100 text-amber-900'
-                                : 'border-black/20 hover:bg-black/8 text-[#3A3026]'
+                                : 'border-black/20 hover:bg-black/8 active:bg-black/15 text-[#3A3026]'
                             }`}
                           >
                             {isPlaying ? '⏸ Pause' : '▶ Sample'}
@@ -1635,13 +1668,13 @@ export function SettingsBookView({
             </div>
 
             <div
-              className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t pt-2.5 font-hand-kalam text-sm"
+              className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t pt-2.5 font-hand-kalam text-sm"
               style={{ borderColor: `${paper.ink}18` }}
             >
               <button
                 type="button"
                 onClick={handleCloseSettingsBook}
-                className="underline decoration-[#8D6C47] decoration-2 underline-offset-4 hover:opacity-75"
+                className="flex min-h-[44px] items-center justify-center underline decoration-[#8D6C47] decoration-2 underline-offset-4 hover:opacity-75 cursor-pointer"
               >
                 {returnTarget === 'reading' ? 'Return to reading' : 'Close handbook'}
               </button>
@@ -1649,7 +1682,7 @@ export function SettingsBookView({
                 <button
                   type="button"
                   onClick={onCloseAllToTable}
-                  className="font-hand-patrick text-xs underline decoration-dotted underline-offset-4 opacity-75 hover:opacity-100"
+                  className="flex min-h-[44px] items-center justify-center font-hand-patrick text-xs underline decoration-dotted underline-offset-4 opacity-75 hover:opacity-100 cursor-pointer"
                 >
                   Close volume to desk
                 </button>
@@ -1924,6 +1957,67 @@ export function SettingsBookView({
             }}
           />
         </div>
+      )}
+
+      {/* Mobile Navigation Dock: clean tactile bottom bar on mobile (<768px) */}
+      {viewport.w < 768 && (
+        <nav
+          aria-label="Settings mobile navigation"
+          className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 flex max-w-[calc(100vw-1rem)] items-center justify-between gap-1 rounded-full border px-2 py-1 font-hand-patrick text-xs shadow-xl backdrop-blur-md"
+          style={{
+            backgroundColor: paper.isDarkPaper ? 'rgba(38, 30, 24, 0.95)' : 'rgba(246, 241, 231, 0.95)',
+            borderColor: `${paper.ink}35`,
+            color: paper.ink,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.28), 0 2px 6px rgba(0,0,0,0.16)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => turnPrev(false)}
+            disabled={isFirstPage}
+            aria-label="Previous settings page"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-2 py-1 text-center transition-colors hover:bg-black/10 active:bg-black/20 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+          >
+            ◀ Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => goToPage(1)}
+            aria-label="Jump to contents"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-2.5 py-1 text-center font-medium transition-colors hover:bg-black/10 active:bg-black/20 cursor-pointer"
+          >
+            Contents
+          </button>
+          <div
+            data-testid="settings-mobile-page-indicator"
+            className="flex min-w-[64px] max-w-[110px] flex-col items-center justify-center px-1 text-center select-none"
+            title={`p. ${clampedPageIndex} / 8 · ${chapterTitle}`}
+          >
+            <span className="font-hand-patrick text-xs font-semibold tabular-nums leading-tight">
+              p. {clampedPageIndex} / 8
+            </span>
+            <span className="w-full truncate font-hand-patrick text-[9.5px] opacity-75 leading-tight">
+              {chapterTitle}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={turnNext}
+            disabled={isLastPage}
+            aria-label="Next settings page"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-2 py-1 text-center transition-colors hover:bg-black/10 active:bg-black/20 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+          >
+            Next ▶
+          </button>
+          <button
+            type="button"
+            onClick={handleCloseSettingsBook}
+            aria-label="Close settings book"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full px-2.5 py-1 text-center font-semibold text-[#8D6C47] transition-colors hover:bg-black/10 active:bg-black/20 cursor-pointer"
+          >
+            Close
+          </button>
+        </nav>
       )}
     </div>
   );
