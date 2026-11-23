@@ -171,6 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       model,
       input: text.slice(0, 200),
       voice: 'autumn',
+      response_format: 'wav',
     });
 
     const upstream = https.request(
