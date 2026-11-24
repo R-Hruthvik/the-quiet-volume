@@ -629,6 +629,10 @@ export function OpenBookView({
     }
   };
 
+  const handleTouchCancel = () => {
+    touchStartRef.current = null;
+  };
+
   const leftStackWidth = Math.max(6, Math.round(progress.leftStackRatio * 18));
   const rightStackWidth = Math.max(6, Math.round(progress.rightStackRatio * 18));
 
@@ -652,6 +656,7 @@ export function OpenBookView({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       data-testid="open-book-stage"
       data-view-mode={effectiveMode}
       data-book-size={settings.bookSize}
