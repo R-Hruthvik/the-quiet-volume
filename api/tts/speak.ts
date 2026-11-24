@@ -25,6 +25,17 @@ function logTTS(event: 'tts_start' | 'tts_success' | 'tts_error' | 'tts_rate_lim
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
+  if (rateLimitMap.size > 200) {
+    for (const [key, times] of rateLimitMap.entries()) {
+      const valid = times.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+      if (valid.length === 0) {
+        rateLimitMap.delete(key);
+      } else {
+        rateLimitMap.set(key, valid);
+      }
+    }
+  }
+
   const timestamps = (rateLimitMap.get(ip) || []).filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
   if (timestamps.length >= MAX_REQUESTS_PER_WINDOW) {
     return false;
