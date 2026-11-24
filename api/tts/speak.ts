@@ -199,7 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const model = voice || 'canopylabs/orpheus-v1-english';
     const payload = JSON.stringify({
       model,
-      input: text.slice(0, 200),
+      input: text,
       voice: 'autumn',
       response_format: 'wav',
     });
