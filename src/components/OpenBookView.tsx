@@ -696,6 +696,17 @@ export function OpenBookView({
           <>
             <button
               type="button"
+              onClick={handleClose}
+              title="Close book and return to library table (Esc key)"
+              aria-label="Close book to table"
+              className="flex min-h-[40px] items-center justify-center gap-1 rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap font-medium"
+            >
+              <span>🗂</span>
+              <span>Table</span>
+            </button>
+            <span aria-hidden="true" className="opacity-30">|</span>
+            <button
+              type="button"
               onClick={jumpToFirstPage}
               title="Jump to first page (Home key)"
               className="flex min-h-[40px] items-center justify-center rounded-[3px] px-3 py-2 hover:bg-black/8 transition-colors cursor-pointer touch-manipulation whitespace-nowrap"
