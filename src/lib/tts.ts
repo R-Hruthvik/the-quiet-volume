@@ -201,6 +201,10 @@ export function getPersistentAudio(): HTMLAudioElement | null {
   return persistentAudio;
 }
 
+export function setCurrentAudio(audio: HTMLAudioElement | null): void {
+  currentAudio = audio;
+}
+
 const SILENT_WAV_BASE64 =
   'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 

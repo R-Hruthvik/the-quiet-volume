@@ -37,6 +37,7 @@ import {
   getPersistentAudio,
   pauseSpeaking,
   resumeSpeaking,
+  setCurrentAudio,
   speakSentence,
   splitIntoSentences,
   stopSpeaking,
@@ -704,6 +705,7 @@ export default function App() {
         const audio = getPersistentAudio() || new Audio();
         audio.src = result.url;
         audio.playbackRate = settings.ttsSpeed || 1.0;
+        setCurrentAudio(audio);
         await audio.play().catch(() => {});
         setIsReadingAloud(true);
         setIsSpeechPaused(false);
@@ -729,6 +731,7 @@ export default function App() {
       const audio = getPersistentAudio() || new Audio();
       audio.src = chapterFile.url;
       audio.playbackRate = settings.ttsSpeed || 1.0;
+      setCurrentAudio(audio);
 
       const section = activeVolume.sections.find((s) => s.index === sectionIndex);
       const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
@@ -798,6 +801,7 @@ export default function App() {
         const audio = getPersistentAudio() || new Audio();
         audio.src = storedFile.url;
         audio.playbackRate = settings.ttsSpeed || 1.0;
+        setCurrentAudio(audio);
         await audio.play().catch(() => {});
         setIsReadingAloud(true);
         setIsSpeechPaused(false);
