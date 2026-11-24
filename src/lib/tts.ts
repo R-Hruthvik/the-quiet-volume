@@ -215,8 +215,8 @@ export function unlockAudioOnUserGesture(): void {
   if (typeof window === 'undefined') return;
   const audio = getPersistentAudio();
   if (!audio) return;
-  // Play silent buffer to acquire mobile browser playback permission
-  if (audio.paused && !audio.src) {
+  // Play silent buffer to acquire or renew mobile browser playback gesture
+  if (audio.paused && (!audio.src || audio.src.startsWith('data:audio/wav;base64'))) {
     audio.src = SILENT_WAV_BASE64;
     audio.play().catch(() => {});
   }
