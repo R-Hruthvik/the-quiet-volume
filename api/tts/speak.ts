@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import https from 'node:https';
 
 export const config = {
-  maxDuration: 15,
+  maxDuration: 60,
 };
 
 // Rate limiting: max 40 requests per 60s per client IP

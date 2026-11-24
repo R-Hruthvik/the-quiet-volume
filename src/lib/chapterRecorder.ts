@@ -33,11 +33,11 @@ export function getProviderMaxChunkLength(provider?: TTSProvider): number {
       return 1800; // Deepgram Aura optimal prose limit under 2,000
     case 'fish':
       // Fish Audio has a strict 50 requests/day free tier quota.
-      // Slicing into large chunks (~3,800 chars) minimizes request consumption per chapter.
-      return 3800;
+      // 2,500 chars strikes the optimal balance: stays within streaming timeout while minimizing request consumption.
+      return 2500;
     case 'elevenlabs':
-      // ElevenLabs Turbo models support generous context (up to 5,000+ chars)
-      return 4800;
+      // ElevenLabs Turbo models support generous context
+      return 3500;
     default:
       return 1800;
   }
