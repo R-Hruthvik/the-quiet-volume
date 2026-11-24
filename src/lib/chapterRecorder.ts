@@ -29,11 +29,17 @@ export function getProviderMaxChunkLength(provider?: TTSProvider): number {
   switch (provider) {
     case 'groq':
       return 180; // Groq Orpheus hard limit is 200 chars
-    case 'fish':
-    case 'elevenlabs':
     case 'deepgram':
+      return 1800; // Deepgram Aura optimal prose limit under 2,000
+    case 'fish':
+      // Fish Audio has a strict 50 requests/day free tier quota.
+      // Slicing into large chunks (~3,800 chars) minimizes request consumption per chapter.
+      return 3800;
+    case 'elevenlabs':
+      // ElevenLabs Turbo models support generous context (up to 5,000+ chars)
+      return 4800;
     default:
-      return 1200; // Optimal prose chunk size safely under the 2,000 server limit
+      return 1800;
   }
 }
 

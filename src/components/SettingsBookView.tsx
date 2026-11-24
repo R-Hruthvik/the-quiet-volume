@@ -27,6 +27,7 @@ import {
   getBrowserSpeechVoices,
   isSpeechSupported,
   TTS_VOICE_CATALOG,
+  unlockAudioOnUserGesture,
 } from '../lib/tts';
 import {
   chooseAudiobooksDirectory,
@@ -194,6 +195,7 @@ export function SettingsBookView({
 
   const handlePlayPreview = useCallback((opt: TTSVoiceOption) => {
     if (!opt.previewUrl) return;
+    unlockAudioOnUserGesture();
     if (previewAudioRef.current) {
       previewAudioRef.current.pause();
       previewAudioRef.current = null;

@@ -89,9 +89,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Text string is required' });
   }
 
-  // 3. Payload length cap to prevent credit exhaustion
-  if (text.length > 2000) {
-    return res.status(400).json({ error: 'Text exceeds maximum limit of 2,000 characters per request' });
+  // 3. Provider-specific payload character ceiling to preserve quotas & conform to model limits
+  const maxCharsByProvider: Record<string, number> = {
+    groq: 200,         // Groq Orpheus API enforces hard 200-character max
+    deepgram: 2000,    // Deepgram Aura optimal prose limit
+    fish: 4000,        // Fish Audio accepts up to 5,000 chars (4,000 saves 50 req/day quota)
+    elevenlabs: 5000,  // ElevenLabs Turbo accepts up to 5,000-10,000 chars
+  };
+  const maxAllowedChars = maxCharsByProvider[provider] || 2000;
+  if (text.length > maxAllowedChars) {
+    return res.status(400).json({
+      error: `Text length (${text.length} chars) exceeds maximum limit of ${maxAllowedChars.toLocaleString()} characters for provider '${provider || 'default'}'.`,
+    });
   }
 
   const startTime = Date.now();
@@ -108,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const payload = JSON.stringify({
       text,
       format: 'mp3',
-      model: voice?.includes('drama') ? 'drama-3' : 's2.1-pro-free',
+      model: 's2.1-pro-free',
     });
 
     const upstream = https.request(

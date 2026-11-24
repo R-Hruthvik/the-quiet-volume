@@ -89,20 +89,8 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     style: 'Studio Audiobook Narration',
     costCategory: 'Cost-Effective',
     allowanceInfo: '50 Free Generations/Day + $1.00 Credit Active',
-    previewUrl: '',
+    previewUrl: '/samples/fish_adrian.mp3',
     description: 'Ultra-realistic studio voice with natural cadence and nuance.',
-  },
-  {
-    id: 'fish-drama-3',
-    provider: 'fish',
-    voice: 'drama-3',
-    name: 'Fish Audio Drama 3',
-    gender: 'Neutral',
-    style: 'Dramatic Character Acting',
-    costCategory: 'High-Fidelity',
-    allowanceInfo: 'Billed to $1.00 Active Free Credit',
-    previewUrl: '',
-    description: 'Dynamic character performance with stage directions & whisper tags.',
   },
   {
     id: 'groq-orpheus',
@@ -113,7 +101,7 @@ export const TTS_VOICE_CATALOG: TTSVoiceOption[] = [
     style: 'Expressive Conversational',
     costCategory: 'Cost-Effective',
     allowanceInfo: 'Free Tier Available on Groq (Instant synthesis)',
-    previewUrl: '',
+    previewUrl: '/samples/groq_autumn.mp3',
     description: 'Ultra-low-latency neural voice hosted on Groq LPU engine.',
   },
   {
@@ -199,6 +187,11 @@ const audioCache = new Map<string, string>();
 let persistentAudio: HTMLAudioElement | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 let currentAudioResolve: (() => void) | null = null;
+let isSpeakingPausedState = false;
+
+export function isSpeakingPaused(): boolean {
+  return isSpeakingPausedState;
+}
 
 export function getPersistentAudio(): HTMLAudioElement | null {
   if (typeof window === 'undefined') return null;
@@ -294,12 +287,19 @@ export function syncMediaSessionMetadata(
 }
 
 export function stopSpeaking(): void {
+  isSpeakingPausedState = false;
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
     currentAudio.onended = null;
     currentAudio.onerror = null;
     currentAudio = null;
+  }
+  if (persistentAudio && persistentAudio !== currentAudio) {
+    persistentAudio.pause();
+    persistentAudio.currentTime = 0;
+    persistentAudio.onended = null;
+    persistentAudio.onerror = null;
   }
   if (currentAudioResolve) {
     currentAudioResolve();
@@ -322,9 +322,14 @@ export function stopSpeaking(): void {
 }
 
 export function pauseSpeaking(): void {
+  isSpeakingPausedState = true;
   if (currentAudio) {
     currentAudio.pause();
-  } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  }
+  if (persistentAudio) {
+    persistentAudio.pause();
+  }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.pause();
     } catch {
@@ -341,8 +346,11 @@ export function pauseSpeaking(): void {
 }
 
 export function resumeSpeaking(): void {
+  isSpeakingPausedState = false;
   if (currentAudio) {
     currentAudio.play().catch(() => {});
+  } else if (persistentAudio && persistentAudio.src) {
+    persistentAudio.play().catch(() => {});
   } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.resume();
@@ -531,6 +539,27 @@ export async function speakSentence(
       }
     }
 
+    // Check if user paused or stopped while network fetch or DB read was in-flight
+    if (isSpeakingPausedState) {
+      const audio = getPersistentAudio() || new Audio();
+      audio.src = audioUrl;
+      audio.playbackRate = speed;
+      currentAudio = audio;
+      audio.onended = () => {
+        if (currentAudio === audio) {
+          currentAudio = null;
+        }
+        onEnd();
+      };
+      audio.onerror = () => {
+        if (currentAudio === audio) {
+          currentAudio = null;
+        }
+        speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
+      };
+      return;
+    }
+
     stopSpeaking();
 
     const audio = getPersistentAudio() || new Audio();
@@ -553,11 +582,13 @@ export async function speakSentence(
       speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
     };
 
-    await audio.play();
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.playbackState = 'playing';
-      } catch {}
+    if (!isSpeakingPausedState) {
+      await audio.play();
+      if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.playbackState = 'playing';
+        } catch {}
+      }
     }
   } catch (err) {
     // If network or API fails, smoothly fallback to WebSpeech with natural voice
