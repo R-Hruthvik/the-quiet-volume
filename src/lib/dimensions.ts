@@ -159,36 +159,46 @@ export function computeBookCameraTransform(params: {
   let baseScale: number;
 
   if (pageMode === 'single') {
-    // Single-page focus: crop tightly onto the active single page leaf
-    // while keeping the spine and opposite leaf physically present.
-    // The active page + spine + a sliver of the other page fills the viewport comfortably.
-    const cropMetricsWidth = metrics.singlePageWidth + metrics.coverPadX + 44;
-    const targetWidth = safeW * (safeW < 640 ? 0.96 : safeW < 1024 ? 0.88 : 0.80);
-    const scaleByWidth = targetWidth / cropMetricsWidth;
-    const scaleByHeight = (safeH * 1.12) / metrics.outerHeight;
-    baseScale = safeW < 640 ? scaleByWidth : Math.min(scaleByWidth, scaleByHeight * 1.12);
+    // Single-page focus:
+    // On phones (< 640px), fit single page to fill 94% of viewport width
+    // On tablets/laptops/desktops (>= 640px), scale single page generously so
+    // prose is crisp, large, and comfortably readable without manual zooming
+    const singleLeafWidth = metrics.singlePageWidth + metrics.coverPadX;
+    if (safeW < 640) {
+      baseScale = (safeW * 0.94) / singleLeafWidth;
+    } else {
+      const fitWidth = (safeW * 0.72) / singleLeafWidth;
+      const fitHeight = (safeH * 0.94) / metrics.outerHeight;
+      baseScale = Math.min(fitWidth, fitHeight * 1.25);
+    }
   } else {
     // Two-page spread: frame the full two-page open book
-    const fitW = (safeW * 0.90) / metrics.outerSpreadWidth;
-    const fitH = (safeH * 0.88) / metrics.outerHeight;
-    baseScale = Math.min(fitW, fitH);
+    // Calibrated with comfortable reading scale so text is never tiny at 1.0 zoom
+    const fitW = (safeW * 0.96) / metrics.outerSpreadWidth;
+    const fitH = (safeH * 0.94) / metrics.outerHeight;
+    baseScale = Math.min(fitW, fitH * 1.14);
   }
 
   const effectiveScale = Math.max(0.42, Math.min(2.8, baseScale * userZoom));
 
   // Horizontal camera pan over the full physical two-page book:
-  // - In single-page mode: crop tightly onto active page.
-  //   Left page: outer left book edge aligned to edgeMargin; spine and small sliver of right page at right; rest of right page cut off.
-  //   Right page: outer right book edge aligned to safeW - edgeMargin; spine and small sliver of left page at left; rest of left page cut off.
-  //   Moving between left and right pages glides the camera smoothly across the spine to the top of the other page.
-  // - In two-page spread mode: center normally (translateX = 0), and gently pan if zoom causes overflow.
+  // - In single-page mode:
+  //   On phones (< 640px), aligns the active leaf bounds between [edgeMargin, safeW - edgeMargin]
+  //   On tablets/laptops/desktops (>= 640px), centers the active page dead-center in the viewport,
+  //   pushing the opposite page off to the side so single-page NEVER looks like double-page!
   let translateX = 0;
   const renderedSpreadWidth = metrics.outerSpreadWidth * effectiveScale;
+  const renderedPageWidth = metrics.singlePageWidth * effectiveScale;
   const edgeMargin = safeW < 640 ? 8 : safeW < 1024 ? 18 : 28;
 
   if (pageMode === 'single') {
-    const targetShift = (renderedSpreadWidth - safeW) / 2 + edgeMargin;
-    translateX = activeSide === 'left' ? targetShift : -targetShift;
+    if (safeW < 640) {
+      const targetShift = safeW / 2 - edgeMargin;
+      translateX = activeSide === 'left' ? targetShift : -targetShift;
+    } else {
+      const centerPageShift = (renderedPageWidth / 2) + (metrics.coverPadX * 0.5 * effectiveScale);
+      translateX = activeSide === 'left' ? centerPageShift : -centerPageShift;
+    }
   } else {
     if (userZoom > 1.0 && renderedSpreadWidth > safeW * 0.94) {
       const excessWidth = (renderedSpreadWidth - safeW * 0.9) / 2;
