@@ -44,7 +44,7 @@ import {
   syncMediaSessionMetadata,
   unlockAudioOnUserGesture,
 } from './lib/tts';
-import { getChapterAudioFile, listSavedChapterAudioFiles } from './lib/fileSystemStorage';
+import { getChapterAudioFile, listSavedChapterAudioFiles, type ChapterAudioCue } from './lib/fileSystemStorage';
 import { recordChapterAudio } from './lib/chapterRecorder';
 import type {
   BookIdentity,
@@ -89,6 +89,11 @@ export default function App() {
   const [recordingProgressText, setRecordingProgressText] = useState<string | null>(null);
 
   const speechSessionRef = useRef(0);
+  const recordedPlaybackRef = useRef<{
+    audio: HTMLAudioElement;
+    cues: ChapterAudioCue[];
+    sectionIndex: number;
+  } | null>(null);
   const queueCursorRef = useRef(0);
   const queueRef = useRef<{ blockId: string; sentenceIndex: number; text: string }[]>([]);
   const currentSpeakNextRef = useRef<(() => void) | null>(null);
@@ -223,6 +228,7 @@ export default function App() {
   const stopAllSpeech = useCallback(() => {
     speechSessionRef.current += 1;
     stopSpeaking();
+    recordedPlaybackRef.current = null;
     currentSpeakNextRef.current = null;
     queueCursorRef.current = 0;
     queueRef.current = [];
@@ -645,7 +651,55 @@ export default function App() {
 
   const handleSkipSentence = useCallback(
     (direction: 'next' | 'prev') => {
-      if (!isReadingAloud || !queueRef.current.length) return;
+      if (!isReadingAloud) return;
+
+      // 1. If playing recorded chapter audio file
+      if (recordedPlaybackRef.current) {
+        const { audio, cues } = recordedPlaybackRef.current;
+        if (!cues.length) {
+          audio.currentTime = Math.max(0, audio.currentTime + (direction === 'next' ? 10 : -10));
+          return;
+        }
+
+        const curTime = audio.currentTime;
+        const curIdx = cues.findIndex((c) => curTime >= c.startSec && curTime < c.endSec);
+        let targetIdx: number;
+
+        if (direction === 'next') {
+          targetIdx = curIdx >= 0 ? curIdx + 1 : cues.findIndex((c) => c.startSec > curTime);
+          if (targetIdx < 0 || targetIdx >= cues.length) return;
+        } else {
+          // If more than 1.5s into current sentence, jump to start of current sentence; else go to previous
+          if (curIdx >= 0 && curTime - cues[curIdx].startSec > 1.5) {
+            targetIdx = curIdx;
+          } else {
+            targetIdx = curIdx > 0 ? curIdx - 1 : 0;
+          }
+        }
+
+        const targetCue = cues[targetIdx];
+        audio.currentTime = targetCue.startSec + 0.01;
+        setActiveSpeechCue({ blockId: targetCue.blockId, sentenceIndex: targetCue.sentenceIndex });
+
+        // Turn page if target cue is on a non-visible page
+        const targetPageIdx = paginatedPages.findIndex(
+          (p) => p.blocks && p.blocks.some((b) => b.id === targetCue.blockId)
+        );
+        if (targetPageIdx >= 0) {
+          const curPage = activeVolume?.lastPageIndex ?? 0;
+          const isVisible =
+            settings.pageMode === 'two-page'
+              ? targetPageIdx === curPage || targetPageIdx === curPage + 1
+              : targetPageIdx === curPage;
+          if (!isVisible) {
+            handleChangePageIndex(targetPageIdx);
+          }
+        }
+        return;
+      }
+
+      // 2. If playing live sentence-by-sentence TTS
+      if (!queueRef.current.length) return;
       stopSpeaking();
       if (direction === 'next') {
         currentSpeakNextRef.current?.();
@@ -654,7 +708,109 @@ export default function App() {
         currentSpeakNextRef.current?.();
       }
     },
-    [isReadingAloud]
+    [isReadingAloud, paginatedPages, settings.pageMode, activeVolume, handleChangePageIndex]
+  );
+
+  const handlePlayRecordedChapter = useCallback(
+    async (sectionIndex: number, startFromPageIndex?: number) => {
+      if (!activeVolume) return;
+      unlockAudioOnUserGesture();
+      stopAllSpeech();
+
+      const chapterFile = await getChapterAudioFile(activeVolume.title, sectionIndex);
+      if (!chapterFile) {
+        setBindNotice('Audio file not found on disk. Please re-record chapter.');
+        setTimeout(() => setBindNotice(null), 3500);
+        return;
+      }
+
+      const sessionId = ++speechSessionRef.current;
+      const audio = getPersistentAudio() || new Audio();
+      audio.src = chapterFile.url;
+      audio.playbackRate = settings.ttsSpeed || 1.0;
+      setCurrentAudio(audio);
+
+      const section = activeVolume.sections.find((s) => s.index === sectionIndex);
+      const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
+
+      const cues = chapterFile.metadata?.cues || [];
+      recordedPlaybackRef.current = { audio, cues, sectionIndex };
+
+      // If starting from a specific page within this chapter, seek to the first cue on that page
+      if (startFromPageIndex !== undefined && cues.length > 0) {
+        const targetPage = paginatedPages[startFromPageIndex];
+        if (targetPage?.blocks && targetPage.blocks.length > 0) {
+          const targetBlockIds = new Set(targetPage.blocks.map((b) => b.id));
+          const matchedStartCue = cues.find((c) => targetBlockIds.has(c.blockId));
+          if (matchedStartCue) {
+            audio.currentTime = Math.max(0, matchedStartCue.startSec);
+            setActiveSpeechCue({ blockId: matchedStartCue.blockId, sentenceIndex: matchedStartCue.sentenceIndex });
+          }
+        }
+      }
+
+      syncMediaSessionMetadata(
+        `${activeVolume.title} - ${chapterTitle}`,
+        activeVolume.author || 'The Quiet Volume',
+        () => {
+          audio.play().catch(() => {});
+          setIsSpeechPaused(false);
+        },
+        () => {
+          audio.pause();
+          setIsSpeechPaused(true);
+        },
+        () => handleSkipSentence('prev'),
+        () => handleSkipSentence('next')
+      );
+
+      audio.ontimeupdate = () => {
+        if (speechSessionRef.current !== sessionId) return;
+        const curTime = audio.currentTime;
+        const matched = cues.find((c) => curTime >= c.startSec && curTime < c.endSec);
+        if (matched) {
+          setActiveSpeechCue({ blockId: matched.blockId, sentenceIndex: matched.sentenceIndex });
+
+          // Auto-turn page if cue is on another page
+          const cuePageIdx = paginatedPages.findIndex(
+            (p) => p.blocks && p.blocks.some((b) => b.id === matched.blockId)
+          );
+          if (cuePageIdx >= 0) {
+            const curPage = activeVolume?.lastPageIndex ?? 0;
+            const isVisible =
+              settings.pageMode === 'two-page'
+                ? cuePageIdx === curPage || cuePageIdx === curPage + 1
+                : cuePageIdx === curPage;
+            if (!isVisible) {
+              handleChangePageIndex(cuePageIdx);
+            }
+          }
+        }
+      };
+
+      audio.onended = () => {
+        if (speechSessionRef.current === sessionId) {
+          recordedPlaybackRef.current = null;
+          setActiveSpeechCue(null);
+          setIsReadingAloud(false);
+          setIsSpeechPaused(false);
+        }
+      };
+
+      audio.onerror = () => {
+        if (speechSessionRef.current === sessionId) {
+          recordedPlaybackRef.current = null;
+          setActiveSpeechCue(null);
+          setIsReadingAloud(false);
+          setIsSpeechPaused(false);
+        }
+      };
+
+      await audio.play().catch(() => {});
+      setIsReadingAloud(true);
+      setIsSpeechPaused(false);
+    },
+    [activeVolume, paginatedPages, settings.pageMode, settings.ttsSpeed, handleChangePageIndex, stopAllSpeech, handleSkipSentence]
   );
 
   const handleRecordChapterToFile = useCallback(
@@ -702,85 +858,10 @@ export default function App() {
 
       if (result) {
         listSavedChapterAudioFiles(activeVolume.title).then(setSavedChapterIndices);
-        const audio = getPersistentAudio() || new Audio();
-        audio.src = result.url;
-        audio.playbackRate = settings.ttsSpeed || 1.0;
-        setCurrentAudio(audio);
-        await audio.play().catch(() => {});
-        setIsReadingAloud(true);
-        setIsSpeechPaused(false);
+        await handlePlayRecordedChapter(sectionIndex);
       }
     },
-    [activeVolume, settings, stopAllSpeech]
-  );
-
-  const handlePlayRecordedChapter = useCallback(
-    async (sectionIndex: number) => {
-      if (!activeVolume) return;
-      unlockAudioOnUserGesture();
-      stopAllSpeech();
-
-      const chapterFile = await getChapterAudioFile(activeVolume.title, sectionIndex);
-      if (!chapterFile) {
-        setBindNotice('Audio file not found on disk. Please re-record chapter.');
-        setTimeout(() => setBindNotice(null), 3500);
-        return;
-      }
-
-      const sessionId = ++speechSessionRef.current;
-      const audio = getPersistentAudio() || new Audio();
-      audio.src = chapterFile.url;
-      audio.playbackRate = settings.ttsSpeed || 1.0;
-      setCurrentAudio(audio);
-
-      const section = activeVolume.sections.find((s) => s.index === sectionIndex);
-      const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
-
-      syncMediaSessionMetadata(
-        `${activeVolume.title} - ${chapterTitle}`,
-        activeVolume.author || 'The Quiet Volume',
-        () => {
-          audio.play().catch(() => {});
-          setIsSpeechPaused(false);
-        },
-        () => {
-          audio.pause();
-          setIsSpeechPaused(true);
-        }
-      );
-
-      const cues = chapterFile.metadata?.cues || [];
-
-      audio.ontimeupdate = () => {
-        if (speechSessionRef.current !== sessionId) return;
-        const curTime = audio.currentTime;
-        const matched = cues.find((c) => curTime >= c.startSec && curTime < c.endSec);
-        if (matched) {
-          setActiveSpeechCue({ blockId: matched.blockId, sentenceIndex: matched.sentenceIndex });
-        }
-      };
-
-      audio.onended = () => {
-        if (speechSessionRef.current === sessionId) {
-          setActiveSpeechCue(null);
-          setIsReadingAloud(false);
-          setIsSpeechPaused(false);
-        }
-      };
-
-      audio.onerror = () => {
-        if (speechSessionRef.current === sessionId) {
-          setActiveSpeechCue(null);
-          setIsReadingAloud(false);
-          setIsSpeechPaused(false);
-        }
-      };
-
-      await audio.play().catch(() => {});
-      setIsReadingAloud(true);
-      setIsSpeechPaused(false);
-    },
-    [activeVolume, settings.ttsSpeed, stopAllSpeech]
+    [activeVolume, settings, stopAllSpeech, handlePlayRecordedChapter]
   );
 
   const handleStartSpeakingFromPage = useCallback(
@@ -797,16 +878,9 @@ export default function App() {
       // Check if full single chapter MP3 file exists on disk
       const storedFile = await getChapterAudioFile(activeVolume.title, sectionIdx);
       if (storedFile) {
-        stopAllSpeech();
-        const audio = getPersistentAudio() || new Audio();
-        audio.src = storedFile.url;
-        audio.playbackRate = settings.ttsSpeed || 1.0;
-        setCurrentAudio(audio);
-        await audio.play().catch(() => {});
-        setIsReadingAloud(true);
-        setIsSpeechPaused(false);
         setBindNotice(`Playing ${storedFile.file.name} from disk`);
         setTimeout(() => setBindNotice(null), 3000);
+        await handlePlayRecordedChapter(sectionIdx, targetIdx);
         return;
       }
 
@@ -814,7 +888,7 @@ export default function App() {
         startSpeakingFromPage(targetIdx);
       }, 150);
     },
-    [activeVolume, paginatedPages, settings.pageMode, settings.ttsSpeed, handleChangePageIndex, startSpeakingFromPage, stopAllSpeech]
+    [activeVolume, paginatedPages, settings.pageMode, handleChangePageIndex, handlePlayRecordedChapter, startSpeakingFromPage]
   );
 
   const handleToggleReadAloud = useCallback(() => {
@@ -836,14 +910,14 @@ export default function App() {
       settings.pageMode
     );
     setView('reading');
-    window.setTimeout(() => startSpeakingFromPage(startIdx), 120);
+    window.setTimeout(() => handleStartSpeakingFromPage(startIdx), 120);
   }, [
     isReadingAloud,
     isSpeechPaused,
     activeVolume,
     paginatedPages.length,
     settings.pageMode,
-    startSpeakingFromPage,
+    handleStartSpeakingFromPage,
   ]);
 
   const handlePauseResumeSpeech = useCallback(() => {

@@ -455,7 +455,30 @@ export function BookPageSheet({
               ...getHighlightStyle(highlightKind, paper.isDarkPaper),
             }}
           >
-            {block.text}
+            {sentences
+              ? sentences.map((s, sIdx) => (
+                  <span
+                    key={sIdx}
+                    style={
+                      sIdx === activeSpeechCue?.sentenceIndex
+                        ? {
+                            textDecoration: 'underline',
+                            textDecorationStyle: 'solid',
+                            textDecorationColor: volume.identity.ribbonColor,
+                            textUnderlineOffset: '4px',
+                            backgroundColor: paper.isDarkPaper
+                              ? 'rgba(251, 191, 36, 0.18)'
+                              : 'rgba(245, 158, 11, 0.18)',
+                            borderRadius: '2px',
+                            padding: '0 2px',
+                          }
+                        : undefined
+                    }
+                  >
+                    {s}{' '}
+                  </span>
+                ))
+              : block.text}
           </blockquote>
         ) : (
           <p
@@ -481,9 +504,14 @@ export function BookPageSheet({
                       sIdx === activeSpeechCue?.sentenceIndex
                         ? {
                             textDecoration: 'underline',
-                            textDecorationStyle: 'dotted',
+                            textDecorationStyle: 'solid',
                             textDecorationColor: volume.identity.ribbonColor,
                             textUnderlineOffset: '4px',
+                            backgroundColor: paper.isDarkPaper
+                              ? 'rgba(251, 191, 36, 0.18)'
+                              : 'rgba(245, 158, 11, 0.18)',
+                            borderRadius: '2px',
+                            padding: '0 2px',
                           }
                         : undefined
                     }

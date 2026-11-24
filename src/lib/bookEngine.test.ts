@@ -619,4 +619,36 @@ test('formatChapterFileName cleans titles and numbers chapters sequentially', ()
   assert.equal(sanitizeFileName('invalid/name:*?"<>|'), 'invalid_name_______');
 });
 
+test('chapter audio cue navigation locates next and previous sentences accurately', () => {
+  const cues = [
+    { blockId: 'b1', sentenceIndex: 0, text: 'Sentence one.', startSec: 0.0, endSec: 2.5 },
+    { blockId: 'b1', sentenceIndex: 1, text: 'Sentence two.', startSec: 2.5, endSec: 5.0 },
+    { blockId: 'b2', sentenceIndex: 0, text: 'Sentence three.', startSec: 5.0, endSec: 8.0 },
+    { blockId: 'b2', sentenceIndex: 1, text: 'Sentence four.', startSec: 8.0, endSec: 11.0 },
+  ];
+
+  // At 1.0s (mid sentence 0), skipping next moves to sentence 1
+  const curTime = 1.0;
+  const curIdx = cues.findIndex((c) => curTime >= c.startSec && curTime < c.endSec);
+  assert.equal(curIdx, 0);
+  const nextIdx = curIdx + 1;
+  assert.equal(cues[nextIdx].text, 'Sentence two.');
+  assert.equal(cues[nextIdx].startSec, 2.5);
+
+  // At 4.5s (more than 1.5s into sentence 1), skipping prev restarts sentence 1
+  const midSentenceTime = 4.5;
+  const midIdx = cues.findIndex((c) => midSentenceTime >= c.startSec && midSentenceTime < c.endSec);
+  const restartTarget = midSentenceTime - cues[midIdx].startSec > 1.5 ? midIdx : midIdx - 1;
+  assert.equal(restartTarget, 1);
+  assert.equal(cues[restartTarget].startSec, 2.5);
+
+  // At 2.6s (within 1.5s of start of sentence 1), skipping prev goes to sentence 0
+  const earlySentenceTime = 2.6;
+  const earlyIdx = cues.findIndex((c) => earlySentenceTime >= c.startSec && earlySentenceTime < c.endSec);
+  const prevTarget = earlySentenceTime - cues[earlyIdx].startSec > 1.5 ? earlyIdx : earlyIdx - 1;
+  assert.equal(prevTarget, 0);
+  assert.equal(cues[prevTarget].startSec, 0.0);
+});
+
+
 

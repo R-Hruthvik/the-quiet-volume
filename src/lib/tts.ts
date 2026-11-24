@@ -186,8 +186,11 @@ const MAX_AUDIO_CACHE_SIZE = 25;
 const audioCache = new Map<string, string>();
 let persistentAudio: HTMLAudioElement | null = null;
 let currentAudio: HTMLAudioElement | null = null;
+let currentUtterance: SpeechSynthesisUtterance | null = null;
 let currentAudioResolve: (() => void) | null = null;
 let isSpeakingPausedState = false;
+let activeSpeakToken = 0;
+let activeFetchController: AbortController | null = null;
 
 export function isSpeakingPaused(): boolean {
   return isSpeakingPausedState;
@@ -253,7 +256,9 @@ export function syncMediaSessionMetadata(
   title: string,
   author?: string,
   onPlay?: () => void,
-  onPause?: () => void
+  onPause?: () => void,
+  onPrev?: () => void,
+  onNext?: () => void
 ): void {
   if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
   try {
@@ -285,13 +290,44 @@ export function syncMediaSessionMetadata(
       stopSpeaking();
       onPause?.();
     });
+
+    if (onPrev) {
+      navigator.mediaSession.setActionHandler('previoustrack', onPrev);
+    } else {
+      try {
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+      } catch {}
+    }
+
+    if (onNext) {
+      navigator.mediaSession.setActionHandler('nexttrack', onNext);
+    } else {
+      try {
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+      } catch {}
+    }
   } catch {
     // Ignore unsupported media session actions
   }
 }
 
 export function stopSpeaking(): void {
+  activeSpeakToken++;
   isSpeakingPausedState = false;
+
+  if (activeFetchController) {
+    try {
+      activeFetchController.abort();
+    } catch {}
+    activeFetchController = null;
+  }
+
+  if (currentUtterance) {
+    currentUtterance.onend = null;
+    currentUtterance.onerror = null;
+    currentUtterance = null;
+  }
+
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.currentTime = 0;
@@ -449,6 +485,7 @@ export async function speakSentence(
     return;
   }
 
+  const speakToken = ++activeSpeakToken;
   const provider = options.provider || 'deepgram';
   const voice = options.voice || 'aura-asteria-en';
   const speed = options.speed || 1.0;
@@ -464,12 +501,13 @@ export async function speakSentence(
   // WebSpeech Fallback / Native mode
   if (provider === 'webspeech') {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      onError?.();
+      if (speakToken === activeSpeakToken) onError?.();
       return;
     }
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(trimmed);
+      currentUtterance = utterance;
       utterance.rate = speed * 0.95;
       utterance.pitch = 1.0;
 
@@ -482,6 +520,10 @@ export async function speakSentence(
       }
 
       utterance.onend = () => {
+        if (currentUtterance === utterance) {
+          currentUtterance = null;
+        }
+        if (speakToken !== activeSpeakToken) return;
         if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
           try {
             navigator.mediaSession.playbackState = 'none';
@@ -489,7 +531,13 @@ export async function speakSentence(
         }
         onEnd();
       };
-      utterance.onerror = () => onError?.();
+      utterance.onerror = () => {
+        if (currentUtterance === utterance) {
+          currentUtterance = null;
+        }
+        if (speakToken !== activeSpeakToken) return;
+        onError?.();
+      };
       window.speechSynthesis.speak(utterance);
       if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
         try {
@@ -497,7 +545,7 @@ export async function speakSentence(
         } catch {}
       }
     } catch {
-      onError?.();
+      if (speakToken === activeSpeakToken) onError?.();
     }
     return;
   }
@@ -510,6 +558,7 @@ export async function speakSentence(
     // 1. If in Recorded mode (default) and not yet in memory, check persistent IndexedDB
     if (!audioUrl && audioMode !== 'live') {
       const persistedBlob = await loadAudioBlob(cacheKey);
+      if (speakToken !== activeSpeakToken) return;
       if (persistedBlob) {
         audioUrl = URL.createObjectURL(persistedBlob);
         setCachedAudio(cacheKey, audioUrl);
@@ -519,6 +568,9 @@ export async function speakSentence(
     // 2. If still no audio, fetch from live API
     if (!audioUrl) {
       const safeText = trimmed.length > 1800 ? trimmed.slice(0, 1800) : trimmed;
+      const controller = new AbortController();
+      activeFetchController = controller;
+
       const response = await fetch('/api/tts/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -527,13 +579,18 @@ export async function speakSentence(
           provider,
           voice,
         }),
+        signal: controller.signal,
       });
+
+      if (speakToken !== activeSpeakToken) return;
 
       if (!response.ok) {
         throw new Error(`TTS server responded with ${response.status}`);
       }
 
       const blob = await response.blob();
+      if (speakToken !== activeSpeakToken) return;
+
       audioUrl = URL.createObjectURL(blob);
       setCachedAudio(cacheKey, audioUrl);
 
@@ -542,6 +599,8 @@ export async function speakSentence(
         saveAudioBlob(cacheKey, options.volumeId || 'global', blob, { provider, voice }).catch(() => {});
       }
     }
+
+    if (speakToken !== activeSpeakToken) return;
 
     // Check if user paused or stopped while network fetch or DB read was in-flight
     if (isSpeakingPausedState) {
@@ -553,18 +612,21 @@ export async function speakSentence(
         if (currentAudio === audio) {
           currentAudio = null;
         }
-        onEnd();
+        if (speakToken === activeSpeakToken) onEnd();
       };
       audio.onerror = () => {
         if (currentAudio === audio) {
           currentAudio = null;
         }
-        speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
+        if (speakToken === activeSpeakToken) {
+          speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
+        }
       };
       return;
     }
 
     stopSpeaking();
+    activeSpeakToken = speakToken; // preserve this sentence's token across internal audio reset
 
     const audio = getPersistentAudio() || new Audio();
     audio.src = audioUrl;
@@ -575,7 +637,7 @@ export async function speakSentence(
       if (currentAudio === audio) {
         currentAudio = null;
       }
-      onEnd();
+      if (speakToken === activeSpeakToken) onEnd();
     };
 
     audio.onerror = () => {
@@ -583,10 +645,12 @@ export async function speakSentence(
         currentAudio = null;
       }
       // Fallback to WebSpeech with high-quality natural voice on audio error
-      speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
+      if (speakToken === activeSpeakToken) {
+        speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
+      }
     };
 
-    if (!isSpeakingPausedState) {
+    if (!isSpeakingPausedState && speakToken === activeSpeakToken) {
       await audio.play();
       if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
         try {
@@ -594,7 +658,10 @@ export async function speakSentence(
         } catch {}
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === 'AbortError' || speakToken !== activeSpeakToken) {
+      return;
+    }
     // If network or API fails, smoothly fallback to WebSpeech with natural voice
     speakSentence(trimmed, { ...options, provider: 'webspeech' }, onEnd, onError);
   }
