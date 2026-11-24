@@ -106,6 +106,18 @@ export async function getOpfsAudiobooksDirectory(): Promise<FileSystemDirectoryH
   }
 }
 
+export async function deleteOpfsBookDirectory(bookTitle: string): Promise<boolean> {
+  const opfsRoot = await getOpfsAudiobooksDirectory();
+  if (!opfsRoot) return false;
+  try {
+    const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
+    await (opfsRoot as any).removeEntry(dirName, { recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }

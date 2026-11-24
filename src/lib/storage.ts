@@ -1,4 +1,5 @@
 import type { BookVolume, ReaderSettings } from '../types/book';
+import { deleteOpfsBookDirectory } from './fileSystemStorage';
 import {
   isValidEnvironmentSurface,
   isValidLightingMode,
@@ -342,7 +343,13 @@ export async function saveVolume(volume: BookVolume): Promise<void> {
   }
 }
 
-export async function removeVolume(volumeId: string): Promise<void> {
+export async function removeVolume(volumeId: string, bookTitle?: string): Promise<void> {
+  const catalogStub = loadCatalog().find((v) => v.id === volumeId);
+  const targetTitle = bookTitle || catalogStub?.title;
+  if (targetTitle) {
+    deleteOpfsBookDirectory(targetTitle).catch(() => {});
+  }
+
   const db = await openDb();
   if (db) {
     await new Promise<void>((resolve) => {
