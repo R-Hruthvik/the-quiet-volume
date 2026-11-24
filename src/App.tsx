@@ -169,7 +169,7 @@ export default function App() {
       return;
     }
     let isCurrent = true;
-    listSavedChapterAudioFiles(activeVolume.title).then((indices) => {
+    listSavedChapterAudioFiles(activeVolume.title, activeVolume.id).then((indices) => {
       if (isCurrent) {
         setSavedChapterIndices(indices);
       }
@@ -560,10 +560,11 @@ export default function App() {
       }
       const sessionId = ++speechSessionRef.current;
 
+      const isSinglePage = settings.pageMode === 'single' || (typeof window !== 'undefined' && window.innerWidth < 768);
       const spreadPages =
-        settings.pageMode === 'two-page'
-          ? [paginatedPages[pageIndex], paginatedPages[pageIndex + 1]].filter(Boolean)
-          : [paginatedPages[pageIndex]].filter(Boolean);
+        isSinglePage
+          ? [paginatedPages[pageIndex]].filter(Boolean)
+          : [paginatedPages[pageIndex], paginatedPages[pageIndex + 1]].filter(Boolean);
 
       const sectionTitle = spreadPages[0]?.sectionTitle || activeVolume.title;
       syncMediaSessionMetadata(
@@ -579,14 +580,14 @@ export default function App() {
         }
       );
 
-      const queue: { blockId: string; sentenceIndex: number; text: string }[] = [];
+      const queue: { blockId: string; sentenceIndex: number; text: string; pageIndex: number }[] = [];
       for (const page of spreadPages) {
         if (!page || page.kind !== 'content' || !page.blocks) continue;
         for (const block of page.blocks) {
           if (block.kind === 'scene-break' || block.kind === 'code' || block.kind === 'chapter-title') continue;
           const sentences = splitIntoSentences(block.text);
           sentences.forEach((s, idx) => {
-            queue.push({ blockId: block.id, sentenceIndex: idx, text: s });
+            queue.push({ blockId: block.id, sentenceIndex: idx, text: s, pageIndex: page.index });
           });
         }
       }
@@ -594,8 +595,9 @@ export default function App() {
       queueRef.current = queue;
       queueCursorRef.current = 0;
 
+      const step = isSinglePage ? 1 : 2;
+
       if (queue.length === 0) {
-        const step = settings.pageMode === 'two-page' ? 2 : 1;
         if (pageIndex + step < paginatedPages.length - 1) {
           handleChangePageIndex(pageIndex + step);
           pageTurnTimerRef.current = window.setTimeout(() => {
@@ -613,7 +615,6 @@ export default function App() {
       const speakNext = () => {
         if (speechSessionRef.current !== sessionId) return;
         if (queueCursorRef.current >= queue.length) {
-          const step = settings.pageMode === 'two-page' ? 2 : 1;
           const nextIdx = pageIndex + step;
           if (nextIdx < paginatedPages.length - 1) {
             handleChangePageIndex(nextIdx);
@@ -629,6 +630,9 @@ export default function App() {
           return;
         }
         const cue = queue[queueCursorRef.current++];
+        if (isSinglePage && cue.pageIndex !== undefined && cue.pageIndex !== pageIndex) {
+          handleChangePageIndex(cue.pageIndex);
+        }
         setActiveSpeechCue({ blockId: cue.blockId, sentenceIndex: cue.sentenceIndex });
         speakSentence(
           cue.text,
@@ -727,7 +731,12 @@ export default function App() {
       unlockAudioOnUserGesture();
       stopAllSpeech();
 
-      const chapterFile = await getChapterAudioFile(activeVolume.title, sectionIndex);
+      const chapterFile = await getChapterAudioFile(
+        activeVolume.title,
+        sectionIndex,
+        undefined,
+        activeVolume.id
+      );
       if (!chapterFile) {
         setBindNotice('Audio file not found on disk. Please re-record chapter.');
         setTimeout(() => setBindNotice(null), 3500);
@@ -864,7 +873,7 @@ export default function App() {
             setRecordingProgressText(null);
             setBindNotice(`Saved ${progress.chapterTitle} MP3 to disk!`);
             setTimeout(() => setBindNotice(null), 3500);
-            listSavedChapterAudioFiles(activeVolume.title).then(setSavedChapterIndices);
+            listSavedChapterAudioFiles(activeVolume.title, activeVolume.id).then(setSavedChapterIndices);
           } else if (progress.status === 'error') {
             setRecordingSectionIndex(null);
             setRecordingProgressText(null);
@@ -875,7 +884,7 @@ export default function App() {
       );
 
       if (result) {
-        listSavedChapterAudioFiles(activeVolume.title).then(setSavedChapterIndices);
+        listSavedChapterAudioFiles(activeVolume.title, activeVolume.id).then(setSavedChapterIndices);
         await handlePlayRecordedChapter(sectionIndex);
       }
     },
@@ -894,7 +903,12 @@ export default function App() {
       const sectionIdx = targetPage?.sectionIndex ?? 0;
 
       // Check if full single chapter MP3 file exists on disk
-      const storedFile = await getChapterAudioFile(activeVolume.title, sectionIdx);
+      const storedFile = await getChapterAudioFile(
+        activeVolume.title,
+        sectionIdx,
+        undefined,
+        activeVolume.id
+      );
       if (storedFile) {
         setBindNotice(`Playing ${storedFile.file.name} from disk`);
         setTimeout(() => setBindNotice(null), 3000);

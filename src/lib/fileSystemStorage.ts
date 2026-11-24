@@ -3,6 +3,8 @@
  * Allows saving single .mp3 chapter audio files directly to user-selected folders on disk.
  */
 
+import { loadChapterAudio, listSavedAudioChapters } from './storage';
+
 const DB_NAME = 'quiet-volume-fs';
 const STORE_HANDLES = 'directoryHandles';
 const DIR_HANDLE_KEY = 'audiobooksDir';
@@ -228,8 +230,9 @@ export async function saveChapterAudioFile(
 export async function getChapterAudioFile(
   bookTitle: string,
   chapterIndex: number,
-  chapterTitle?: string
-): Promise<{ file: File; url: string; metadata?: ChapterAudioMetadata } | null> {
+  chapterTitle?: string,
+  volumeId?: string
+): Promise<{ file: File | Blob; url: string; metadata?: ChapterAudioMetadata } | null> {
   const padded = String(chapterIndex + 1).padStart(2, '0');
   const prefix = `Chapter_${padded}`;
   const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
@@ -295,6 +298,15 @@ export async function getChapterAudioFile(
     if (res) return res;
   }
 
+  // 3. Fallback to IndexedDB backup storage
+  if (volumeId) {
+    const record = await loadChapterAudio(volumeId, chapterIndex);
+    if (record && record.audioBlob) {
+      const url = URL.createObjectURL(record.audioBlob);
+      return { file: record.audioBlob, url };
+    }
+  }
+
   return null;
 }
 
@@ -306,7 +318,7 @@ export async function hasChapterAudioFile(
   return !!item;
 }
 
-export async function listSavedChapterAudioFiles(bookTitle: string): Promise<number[]> {
+export async function listSavedChapterAudioFiles(bookTitle: string, volumeId?: string): Promise<number[]> {
   const result: number[] = [];
   const dirName = sanitizeFileName(bookTitle || 'Untitled_Book');
 
@@ -333,6 +345,15 @@ export async function listSavedChapterAudioFiles(bookTitle: string): Promise<num
 
   const opfsRoot = await getOpfsAudiobooksDirectory();
   if (opfsRoot) await scanDir(opfsRoot);
+
+  if (volumeId) {
+    const idbIndices = await listSavedAudioChapters(volumeId);
+    for (const idx of idbIndices) {
+      if (!result.includes(idx)) {
+        result.push(idx);
+      }
+    }
+  }
 
   return result.sort((a, b) => a - b);
 }
