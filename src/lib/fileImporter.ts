@@ -156,16 +156,19 @@ async function parseEpubFile(file: File): Promise<ParsedSourceDoc> {
     const parser = new DOMParser();
     const doc = parser.parseFromString(opfXml, 'application/xml');
 
-    const titleEl = doc.querySelector('title');
+    const titleEl = doc.getElementsByTagName('dc:title')[0] || doc.getElementsByTagName('title')[0] || doc.querySelector('title');
     if (titleEl?.textContent?.trim()) title = titleEl.textContent.trim();
-    const creatorEl = doc.querySelector('creator');
+    const creatorEl = doc.getElementsByTagName('dc:creator')[0] || doc.getElementsByTagName('creator')[0] || doc.querySelector('creator');
     if (creatorEl?.textContent?.trim()) author = creatorEl.textContent.trim();
 
     const manifestMap = new Map<string, string>();
     doc.querySelectorAll('manifest > item').forEach((item) => {
       const id = item.getAttribute('id');
       const href = item.getAttribute('href');
-      if (id && href) manifestMap.set(id, baseDir + href);
+      if (id && href) {
+        const cleanHref = href.split('#')[0].split('?')[0];
+        manifestMap.set(id, baseDir + cleanHref);
+      }
     });
 
     doc.querySelectorAll('spine > itemref').forEach((ref) => {
