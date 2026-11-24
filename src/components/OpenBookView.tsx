@@ -663,7 +663,7 @@ export function OpenBookView({
         aria-label="Book quick navigation"
         className={`fixed z-30 flex items-center gap-1 sm:gap-1.5 rounded-full border border-black/15 bg-[#F6F1E7]/95 px-2 sm:px-3 py-1 font-hand-patrick text-xs text-[#2A231C] shadow-md backdrop-blur-xs transition-opacity hover:opacity-100 opacity-85 sm:opacity-75 ${
           viewport.w < 640
-            ? 'bottom-3 inset-x-3 mx-auto w-fit max-w-[96vw] overflow-x-auto justify-center'
+            ? 'bottom-3 inset-x-3 mx-auto max-w-[calc(100vw-24px)] overflow-x-auto justify-start no-scrollbar touch-pan-x'
             : 'bottom-3.5 right-4 sm:right-6'
         }`}
       >
