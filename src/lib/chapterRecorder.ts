@@ -135,8 +135,27 @@ export function sliceTextIntoNaturalChunks(fullText: string, maxChunkLength: num
   return chunks;
 }
 
+function stripId3Tag(buf: ArrayBuffer): Uint8Array {
+  const u8 = new Uint8Array(buf);
+  if (u8.length >= 10 && u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33) {
+    const flags = u8[5];
+    const size =
+      ((u8[6] & 0x7f) << 21) |
+      ((u8[7] & 0x7f) << 14) |
+      ((u8[8] & 0x7f) << 7) |
+      (u8[9] & 0x7f);
+    const hasFooter = (flags & 0x10) !== 0;
+    const tagSize = 10 + size + (hasFooter ? 10 : 0);
+    if (tagSize < u8.length) {
+      return u8.subarray(tagSize);
+    }
+  }
+  return u8;
+}
+
 /**
- * Concatenates multiple MP3 blobs into a single continuous MP3 Blob
+ * Concatenates multiple MP3 blobs into a single continuous MP3 Blob,
+ * stripping ID3 headers from subsequent chunks to prevent playback stalls in mobile Safari & Chrome.
  */
 export async function stitchAudioBlobs(blobs: Blob[]): Promise<Blob> {
   if (blobs.length === 0) {
@@ -147,16 +166,20 @@ export async function stitchAudioBlobs(blobs: Blob[]): Promise<Blob> {
   }
 
   const arrayBuffers = await Promise.all(blobs.map((b) => b.arrayBuffer()));
+  const chunks: Uint8Array[] = arrayBuffers.map((buf, idx) =>
+    idx === 0 ? new Uint8Array(buf) : stripId3Tag(buf)
+  );
+
   let totalLength = 0;
-  for (const buf of arrayBuffers) {
-    totalLength += buf.byteLength;
+  for (const c of chunks) {
+    totalLength += c.byteLength;
   }
 
   const merged = new Uint8Array(totalLength);
   let offset = 0;
-  for (const buf of arrayBuffers) {
-    merged.set(new Uint8Array(buf), offset);
-    offset += buf.byteLength;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
   }
 
   return new Blob([merged], { type: 'audio/mpeg' });
