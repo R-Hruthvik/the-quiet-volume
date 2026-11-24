@@ -143,9 +143,9 @@ export function splitIntoSentences(text: string): string[] {
     const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
     rawSegments = Array.from(segmenter.segment(text), (s) => s.segment);
   } else {
-    // Non-destructive fallback regex that preserves all text, quotes, and punctuation
-    const matches = text.match(/[^.!?]+(?:[.!?]+(?:['"”’)]+|\s+|$)|$)/g);
-    rawSegments = matches || [text];
+    // Non-destructive fallback regex that preserves all text, quotes, and punctuation without truncation
+    const matches = text.match(/.+?(?:[.!?]+(?=[\x27"”’)]*(?:\s|$))[\x27"”’)]*|$)/gs);
+    rawSegments = matches?.filter((s) => s.trim().length > 0) || [text];
   }
 
   const result: string[] = [];
@@ -490,6 +490,30 @@ export async function speakSentence(
   const voice = options.voice || 'aura-asteria-en';
   const speed = options.speed || 1.0;
   const audioMode = options.audioMode || 'recorded'; // Default is recorded/cached
+
+  // Cancel previous fetch controller if still running
+  if (activeFetchController) {
+    try {
+      activeFetchController.abort();
+    } catch {}
+    activeFetchController = null;
+  }
+
+  // Clear any existing utterance
+  if (currentUtterance) {
+    currentUtterance.onend = null;
+    currentUtterance.onerror = null;
+    currentUtterance = null;
+  }
+
+  // Stop any audio element currently playing
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio.onended = null;
+    currentAudio.onerror = null;
+    currentAudio = null;
+  }
 
   syncMediaSessionMetadata(
     options.title || trimmed.slice(0, 40),

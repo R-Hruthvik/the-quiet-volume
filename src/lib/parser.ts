@@ -344,13 +344,15 @@ export function parseTextIntoBlocksAndSections(
 
   const flushParagraph = () => {
     if (paraLines.length === 0) return;
-    const text = paraLines.join(' ').replace(/\s+/g, ' ').trim();
+    const isQuote = paraLines.some((l) => l.trim().startsWith('>'));
+    const cleanLines = isQuote
+      ? paraLines.map((l) => l.trim().replace(/^>\s*/, ''))
+      : paraLines;
+    const cleanText = cleanLines.join(' ').replace(/\s+/g, ' ').trim();
     paraLines = [];
-    if (!text) return;
+    if (!cleanText) return;
 
     ensureSection(detectedTitle);
-    const isQuote = text.startsWith('> ');
-    const cleanText = isQuote ? text.replace(/^>\s*/, '') : text;
     blocks.push({
       id: nextId(),
       kind: isQuote ? 'quote' : 'paragraph',
@@ -997,4 +999,98 @@ export function formatShortDate(timestamp: number): string {
     month: 'long',
     year: 'numeric',
   });
+}
+
+/**
+ * Maps a chapter audio cue ({ blockId, sentenceIndex }) to the exact paginated page,
+ * page block ID, and relative sentence index.
+ * Handles paragraphs that were split across pages (-p1 on page N, -p2 on page N+1).
+ */
+export function resolveCueToPageAndBlock(
+  paginatedPages: PageLayout[],
+  cue: { blockId: string; sentenceIndex: number }
+): { pageIndex: number; blockId: string; sentenceIndex: number } | null {
+  if (!paginatedPages || paginatedPages.length === 0) return null;
+
+  for (let pIdx = 0; pIdx < paginatedPages.length; pIdx++) {
+    const page = paginatedPages[pIdx];
+    if (!page.blocks || page.blocks.length === 0) continue;
+
+    // 1. Direct block ID match
+    const exactBlock = page.blocks.find((b) => b.id === cue.blockId);
+    if (exactBlock) {
+      return { pageIndex: pIdx, blockId: exactBlock.id, sentenceIndex: cue.sentenceIndex };
+    }
+
+    // 2. Check if block was split across pages (-p1 on this page)
+    const p1Block = page.blocks.find((b) => b.id === `${cue.blockId}-p1`);
+    if (p1Block) {
+      const p1Sentences = splitIntoSentences(p1Block.text);
+      if (cue.sentenceIndex < p1Sentences.length) {
+        return { pageIndex: pIdx, blockId: p1Block.id, sentenceIndex: cue.sentenceIndex };
+      }
+      // If sentenceIndex >= p1Sentences.length, it is in -p2 on a subsequent page
+      const p2TargetId = `${cue.blockId}-p2`;
+      for (let p2Idx = pIdx + 1; p2Idx < paginatedPages.length; p2Idx++) {
+        const p2Page = paginatedPages[p2Idx];
+        const p2Block = p2Page.blocks?.find((b) => b.id === p2TargetId);
+        if (p2Block) {
+          return {
+            pageIndex: p2Idx,
+            blockId: p2Block.id,
+            sentenceIndex: Math.max(0, cue.sentenceIndex - p1Sentences.length),
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Locates the target sentence cue index when skipping forward or backward through chapter audio.
+ * Accurately handles boundaries (index 0, index length - 1), 1.5s intra-sentence restarts,
+ * fast double clicks, and playback in gaps or past audio end.
+ */
+export function findTargetCueIndex(
+  cues: { startSec: number; endSec: number }[],
+  curTime: number,
+  direction: 'next' | 'prev'
+): number {
+  if (!cues || cues.length === 0) return -1;
+
+  const curIdx = cues.findIndex((c) => curTime >= c.startSec && curTime < c.endSec);
+
+  if (direction === 'next') {
+    if (curIdx >= 0) {
+      const nextIdx = curIdx + 1;
+      return nextIdx < cues.length ? nextIdx : -1;
+    }
+    // curIdx is -1: find next upcoming cue
+    return cues.findIndex((c) => c.startSec > curTime);
+  } else {
+    // direction === 'prev'
+    if (curIdx >= 0) {
+      // If more than 1.5s into current sentence, jump to start of current sentence; else go to previous
+      if (curTime - cues[curIdx].startSec > 1.5) {
+        return curIdx;
+      }
+      return Math.max(0, curIdx - 1);
+    }
+    // curIdx is -1: find latest cue before curTime
+    let prevIdx = -1;
+    for (let i = cues.length - 1; i >= 0; i--) {
+      if (cues[i].startSec < curTime) {
+        prevIdx = i;
+        break;
+      }
+    }
+    if (prevIdx >= 0) {
+      if (curTime - cues[prevIdx].startSec > 1.5) {
+        return prevIdx;
+      }
+      return Math.max(0, prevIdx - 1);
+    }
+    return 0;
+  }
 }

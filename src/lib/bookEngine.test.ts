@@ -18,8 +18,10 @@ import {
   deriveCollectionTitle,
   estimateReadingProgress,
   findPageIndexByDisplayNumber,
+  findTargetCueIndex,
   paginateBook,
   parseTextIntoBlocksAndSections,
+  resolveCueToPageAndBlock,
   searchBook,
   shouldAskToBindTogether,
   sortRelatedFiles,
@@ -648,6 +650,135 @@ test('chapter audio cue navigation locates next and previous sentences accuratel
   const prevTarget = earlySentenceTime - cues[earlyIdx].startSec > 1.5 ? earlyIdx : earlyIdx - 1;
   assert.equal(prevTarget, 0);
   assert.equal(cues[prevTarget].startSec, 0.0);
+});
+
+test('findTargetCueIndex handles boundaries, gaps, double clicks, and past-end seeks', () => {
+  const cues = [
+    { startSec: 0.0, endSec: 2.5 },
+    { startSec: 2.5, endSec: 5.0 },
+    { startSec: 6.5, endSec: 9.0 }, // 1.5s gap between cues 1 and 2
+  ];
+
+  // Empty cues
+  assert.equal(findTargetCueIndex([], 1.0, 'next'), -1);
+  assert.equal(findTargetCueIndex([], 1.0, 'prev'), -1);
+
+  // Next: inside cue 0 -> cue 1
+  assert.equal(findTargetCueIndex(cues, 1.0, 'next'), 1);
+
+  // Next: inside last cue (cue 2) -> -1 (boundary reached)
+  assert.equal(findTargetCueIndex(cues, 7.5, 'next'), -1);
+
+  // Next: inside gap at 5.5s -> cue 2
+  assert.equal(findTargetCueIndex(cues, 5.5, 'next'), 2);
+
+  // Prev: inside cue 1 at 4.5s (>1.5s) -> restarts cue 1
+  assert.equal(findTargetCueIndex(cues, 4.5, 'prev'), 1);
+
+  // Fast double click simulation: after restart to 2.51s (<=1.5s), prev jumps to cue 0
+  assert.equal(findTargetCueIndex(cues, 2.51, 'prev'), 0);
+
+  // Prev: boundary at cue 0 at 0.5s -> restarts cue 0 without negative index
+  assert.equal(findTargetCueIndex(cues, 0.5, 'prev'), 0);
+
+  // Prev: in gap at 5.5s -> jumps to previous cue (cue 1)
+  assert.equal(findTargetCueIndex(cues, 5.5, 'prev'), 1);
+
+  // Prev: past end of chapter audio at 12.0s -> restarts last cue (cue 2), does not reset to 0
+  assert.equal(findTargetCueIndex(cues, 12.0, 'prev'), 2);
+
+  // Prev: before first cue at -0.1s -> returns 0
+  assert.equal(findTargetCueIndex(cues, -0.1, 'prev'), 0);
+});
+
+test('resolveCueToPageAndBlock maps cues across regular, quote, and split pages', () => {
+  const mockPages = [
+    {
+      index: 0,
+      displayNumber: null,
+      kind: 'front-bookplate' as const,
+      sectionIndex: 0,
+      wordCount: 0,
+    },
+    {
+      index: 1,
+      displayNumber: 1,
+      kind: 'content' as const,
+      sectionIndex: 0,
+      wordCount: 100,
+      blocks: [
+        { id: 'b-0-1', kind: 'paragraph' as const, text: 'Single page paragraph.', sectionIndex: 0 },
+        { id: 'b-0-2-p1', kind: 'paragraph' as const, text: 'First half sentence zero. First half sentence one.', sectionIndex: 0 },
+      ],
+    },
+    {
+      index: 2,
+      displayNumber: 2,
+      kind: 'content' as const,
+      sectionIndex: 0,
+      wordCount: 100,
+      blocks: [
+        { id: 'b-0-2-p2', kind: 'paragraph' as const, text: 'Second half sentence two. Second half sentence three.', sectionIndex: 0 },
+        { id: 'b-0-3', kind: 'quote' as const, text: 'A wise quote. Second sentence of quote.', sectionIndex: 0 },
+      ],
+    },
+  ];
+
+  // 1. Direct block on page 1
+  const direct = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-1', sentenceIndex: 0 });
+  assert.deepEqual(direct, { pageIndex: 1, blockId: 'b-0-1', sentenceIndex: 0 });
+
+  // 2. Split block first half on page 1
+  const splitP1_s0 = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-2', sentenceIndex: 0 });
+  assert.deepEqual(splitP1_s0, { pageIndex: 1, blockId: 'b-0-2-p1', sentenceIndex: 0 });
+
+  const splitP1_s1 = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-2', sentenceIndex: 1 });
+  assert.deepEqual(splitP1_s1, { pageIndex: 1, blockId: 'b-0-2-p1', sentenceIndex: 1 });
+
+  // 3. Split block second half on page 2 (sentence index shifted relative to page block)
+  const splitP2_s2 = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-2', sentenceIndex: 2 });
+  assert.deepEqual(splitP2_s2, { pageIndex: 2, blockId: 'b-0-2-p2', sentenceIndex: 0 });
+
+  const splitP2_s3 = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-2', sentenceIndex: 3 });
+  assert.deepEqual(splitP2_s3, { pageIndex: 2, blockId: 'b-0-2-p2', sentenceIndex: 1 });
+
+  // 4. Quote block on page 2
+  const quote_s1 = resolveCueToPageAndBlock(mockPages, { blockId: 'b-0-3', sentenceIndex: 1 });
+  assert.deepEqual(quote_s1, { pageIndex: 2, blockId: 'b-0-3', sentenceIndex: 1 });
+
+  // 5. Unknown block returns null
+  assert.equal(resolveCueToPageAndBlock(mockPages, { blockId: 'non-existent', sentenceIndex: 0 }), null);
+});
+
+test('parseTextIntoBlocksAndSections cleans multi-line blockquotes without leaking syntax markers', () => {
+  const markdown = `# Quotes Test\n\n> "Reading is to the mind what exercise is to the body."\n> — Joseph Addison\n\nFollow-up paragraph.`;
+  const parsed = parseTextIntoBlocksAndSections(markdown, 'Quotes Test');
+  const quoteBlock = parsed.blocks.find((b) => b.kind === 'quote');
+  assert.ok(quoteBlock);
+  assert.ok(!quoteBlock.text.includes('>'), 'Quote block text must not contain markdown > markers');
+  assert.ok(quoteBlock.text.includes('Joseph Addison'));
+
+  const sentences = splitIntoSentences(quoteBlock.text);
+  assert.ok(sentences.length >= 1);
+  assert.ok(sentences[0].includes('Reading is to the mind'));
+});
+
+test('splitIntoSentences handles fallback regex without truncating decimals and abbreviations', () => {
+  const origIntl = globalThis.Intl;
+  try {
+    // @ts-ignore
+    globalThis.Intl = undefined;
+    const res1 = splitIntoSentences('He paid $3.50 for the coffee. It was good.');
+    assert.equal(res1.length, 2);
+    assert.equal(res1[0], 'He paid $3.50 for the coffee.');
+    assert.equal(res1[1], 'It was good.');
+
+    const res2 = splitIntoSentences('Dr. Watson arrived at 5 p.m. It was cold.');
+    assert.ok(res2.length >= 2);
+    assert.ok(res2[0].startsWith('Dr. Watson'));
+  } finally {
+    globalThis.Intl = origIntl;
+  }
 });
 
 

@@ -16,8 +16,10 @@ import { getEffectiveLighting } from './lib/lighting';
 import {
   buildVolumeFromDocs,
   clampSpreadStart,
+  findTargetCueIndex,
   getFirstReadablePageIndex,
   paginateBook,
+  resolveCueToPageAndBlock,
   shouldAskToBindTogether,
   type ParsedSourceDoc,
 } from './lib/parser';
@@ -97,6 +99,7 @@ export default function App() {
   const queueCursorRef = useRef(0);
   const queueRef = useRef<{ blockId: string; sentenceIndex: number; text: string }[]>([]);
   const currentSpeakNextRef = useRef<(() => void) | null>(null);
+  const pageTurnTimerRef = useRef<number | null>(null);
 
   // Load persisted volumes (or seed quiet starter volumes on first visit)
   useEffect(() => {
@@ -227,6 +230,10 @@ export default function App() {
   // Stop speech cleanly whenever closing book or leaving reading view
   const stopAllSpeech = useCallback(() => {
     speechSessionRef.current += 1;
+    if (pageTurnTimerRef.current) {
+      clearTimeout(pageTurnTimerRef.current);
+      pageTurnTimerRef.current = null;
+    }
     stopSpeaking();
     recordedPlaybackRef.current = null;
     currentSpeakNextRef.current = null;
@@ -547,6 +554,10 @@ export default function App() {
     (pageIndex: number) => {
       if (!activeVolume) return;
       unlockAudioOnUserGesture();
+      if (pageTurnTimerRef.current) {
+        clearTimeout(pageTurnTimerRef.current);
+        pageTurnTimerRef.current = null;
+      }
       const sessionId = ++speechSessionRef.current;
 
       const spreadPages =
@@ -572,7 +583,7 @@ export default function App() {
       for (const page of spreadPages) {
         if (!page || page.kind !== 'content' || !page.blocks) continue;
         for (const block of page.blocks) {
-          if (block.kind === 'scene-break' || block.kind === 'code') continue;
+          if (block.kind === 'scene-break' || block.kind === 'code' || block.kind === 'chapter-title') continue;
           const sentences = splitIntoSentences(block.text);
           sentences.forEach((s, idx) => {
             queue.push({ blockId: block.id, sentenceIndex: idx, text: s });
@@ -587,7 +598,8 @@ export default function App() {
         const step = settings.pageMode === 'two-page' ? 2 : 1;
         if (pageIndex + step < paginatedPages.length - 1) {
           handleChangePageIndex(pageIndex + step);
-          window.setTimeout(() => {
+          pageTurnTimerRef.current = window.setTimeout(() => {
+            pageTurnTimerRef.current = null;
             if (speechSessionRef.current === sessionId) {
               startSpeakingFromPage(pageIndex + step);
             }
@@ -605,7 +617,8 @@ export default function App() {
           const nextIdx = pageIndex + step;
           if (nextIdx < paginatedPages.length - 1) {
             handleChangePageIndex(nextIdx);
-            window.setTimeout(() => {
+            pageTurnTimerRef.current = window.setTimeout(() => {
+              pageTurnTimerRef.current = null;
               if (speechSessionRef.current === sessionId) {
                 startSpeakingFromPage(nextIdx);
               }
@@ -657,51 +670,48 @@ export default function App() {
       if (recordedPlaybackRef.current) {
         const { audio, cues } = recordedPlaybackRef.current;
         if (!cues.length) {
-          audio.currentTime = Math.max(0, audio.currentTime + (direction === 'next' ? 10 : -10));
+          const step = direction === 'next' ? 10 : -10;
+          const maxDur = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Infinity;
+          audio.currentTime = Math.min(maxDur, Math.max(0, audio.currentTime + step));
           return;
         }
 
         const curTime = audio.currentTime;
-        const curIdx = cues.findIndex((c) => curTime >= c.startSec && curTime < c.endSec);
-        let targetIdx: number;
-
-        if (direction === 'next') {
-          targetIdx = curIdx >= 0 ? curIdx + 1 : cues.findIndex((c) => c.startSec > curTime);
-          if (targetIdx < 0 || targetIdx >= cues.length) return;
-        } else {
-          // If more than 1.5s into current sentence, jump to start of current sentence; else go to previous
-          if (curIdx >= 0 && curTime - cues[curIdx].startSec > 1.5) {
-            targetIdx = curIdx;
-          } else {
-            targetIdx = curIdx > 0 ? curIdx - 1 : 0;
-          }
-        }
+        const targetIdx = findTargetCueIndex(cues, curTime, direction);
+        if (targetIdx < 0 || targetIdx >= cues.length) return;
 
         const targetCue = cues[targetIdx];
         audio.currentTime = targetCue.startSec + 0.01;
-        setActiveSpeechCue({ blockId: targetCue.blockId, sentenceIndex: targetCue.sentenceIndex });
 
-        // Turn page if target cue is on a non-visible page
-        const targetPageIdx = paginatedPages.findIndex(
-          (p) => p.blocks && p.blocks.some((b) => b.id === targetCue.blockId)
-        );
-        if (targetPageIdx >= 0) {
+        const resolved = resolveCueToPageAndBlock(paginatedPages, targetCue);
+        if (resolved) {
+          setActiveSpeechCue({ blockId: resolved.blockId, sentenceIndex: resolved.sentenceIndex });
           const curPage = activeVolume?.lastPageIndex ?? 0;
           const isVisible =
             settings.pageMode === 'two-page'
-              ? targetPageIdx === curPage || targetPageIdx === curPage + 1
-              : targetPageIdx === curPage;
+              ? resolved.pageIndex === curPage || resolved.pageIndex === curPage + 1
+              : resolved.pageIndex === curPage;
           if (!isVisible) {
-            handleChangePageIndex(targetPageIdx);
+            handleChangePageIndex(resolved.pageIndex);
           }
+        } else {
+          setActiveSpeechCue({ blockId: targetCue.blockId, sentenceIndex: targetCue.sentenceIndex });
         }
         return;
       }
 
       // 2. If playing live sentence-by-sentence TTS
       if (!queueRef.current.length) return;
+      if (pageTurnTimerRef.current) {
+        clearTimeout(pageTurnTimerRef.current);
+        pageTurnTimerRef.current = null;
+      }
       stopSpeaking();
       if (direction === 'next') {
+        if (queueCursorRef.current >= queueRef.current.length) {
+          currentSpeakNextRef.current?.();
+          return;
+        }
         currentSpeakNextRef.current?.();
       } else {
         queueCursorRef.current = Math.max(0, queueCursorRef.current - 2);
@@ -724,6 +734,10 @@ export default function App() {
         return;
       }
 
+      if (pageTurnTimerRef.current) {
+        clearTimeout(pageTurnTimerRef.current);
+        pageTurnTimerRef.current = null;
+      }
       const sessionId = ++speechSessionRef.current;
       const audio = getPersistentAudio() || new Audio();
       audio.src = chapterFile.url;
@@ -733,17 +747,21 @@ export default function App() {
       const section = activeVolume.sections.find((s) => s.index === sectionIndex);
       const chapterTitle = section?.title || `Chapter ${sectionIndex + 1}`;
 
-      const cues = chapterFile.metadata?.cues || [];
+      const cues = Array.isArray(chapterFile.metadata?.cues) ? chapterFile.metadata.cues : [];
       recordedPlaybackRef.current = { audio, cues, sectionIndex };
 
       // If starting from a specific page within this chapter, seek to the first cue on that page
       if (startFromPageIndex !== undefined && cues.length > 0) {
-        const targetPage = paginatedPages[startFromPageIndex];
-        if (targetPage?.blocks && targetPage.blocks.length > 0) {
-          const targetBlockIds = new Set(targetPage.blocks.map((b) => b.id));
-          const matchedStartCue = cues.find((c) => targetBlockIds.has(c.blockId));
-          if (matchedStartCue) {
-            audio.currentTime = Math.max(0, matchedStartCue.startSec);
+        const matchedStartCue = cues.find((c) => {
+          const resolved = resolveCueToPageAndBlock(paginatedPages, c);
+          return resolved?.pageIndex === startFromPageIndex;
+        });
+        if (matchedStartCue) {
+          audio.currentTime = Math.max(0, matchedStartCue.startSec);
+          const resolved = resolveCueToPageAndBlock(paginatedPages, matchedStartCue);
+          if (resolved) {
+            setActiveSpeechCue({ blockId: resolved.blockId, sentenceIndex: resolved.sentenceIndex });
+          } else {
             setActiveSpeechCue({ blockId: matchedStartCue.blockId, sentenceIndex: matchedStartCue.sentenceIndex });
           }
         }
@@ -769,21 +787,21 @@ export default function App() {
         const curTime = audio.currentTime;
         const matched = cues.find((c) => curTime >= c.startSec && curTime < c.endSec);
         if (matched) {
-          setActiveSpeechCue({ blockId: matched.blockId, sentenceIndex: matched.sentenceIndex });
+          const resolved = resolveCueToPageAndBlock(paginatedPages, matched);
+          if (resolved) {
+            setActiveSpeechCue({ blockId: resolved.blockId, sentenceIndex: resolved.sentenceIndex });
 
-          // Auto-turn page if cue is on another page
-          const cuePageIdx = paginatedPages.findIndex(
-            (p) => p.blocks && p.blocks.some((b) => b.id === matched.blockId)
-          );
-          if (cuePageIdx >= 0) {
+            // Auto-turn page if cue is on another page
             const curPage = activeVolume?.lastPageIndex ?? 0;
             const isVisible =
               settings.pageMode === 'two-page'
-                ? cuePageIdx === curPage || cuePageIdx === curPage + 1
-                : cuePageIdx === curPage;
+                ? resolved.pageIndex === curPage || resolved.pageIndex === curPage + 1
+                : resolved.pageIndex === curPage;
             if (!isVisible) {
-              handleChangePageIndex(cuePageIdx);
+              handleChangePageIndex(resolved.pageIndex);
             }
+          } else {
+            setActiveSpeechCue({ blockId: matched.blockId, sentenceIndex: matched.sentenceIndex });
           }
         }
       };
