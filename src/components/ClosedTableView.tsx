@@ -868,17 +868,21 @@ export function ClosedTableView({
           >
             Backup library
           </button>
-          <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
-            ·
-          </span>
-          <button
-            type="button"
-            onClick={triggerFolderPicker}
-            className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
-            style={{ color: lightSpec.tableInk }}
-          >
-            Import folder
-          </button>
+          {layout.isDesktop && (
+            <>
+              <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={triggerFolderPicker}
+                className="inline-flex min-h-[44px] items-center justify-center px-3 py-2 font-hand-kalam text-sm underline decoration-dotted underline-offset-4 opacity-85 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7B5D3B]/60 rounded-xs"
+                style={{ color: lightSpec.tableInk }}
+              >
+                Import folder
+              </button>
+            </>
+          )}
           <span aria-hidden="true" className="hidden sm:inline" style={{ color: lightSpec.tableInk, opacity: 0.4 }}>
             ·
           </span>
