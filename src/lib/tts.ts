@@ -506,11 +506,12 @@ export async function speakSentence(
 
     // 2. If still no audio, fetch from live API
     if (!audioUrl) {
+      const safeText = trimmed.length > 1800 ? trimmed.slice(0, 1800) : trimmed;
       const response = await fetch('/api/tts/speak', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: trimmed,
+          text: safeText,
           provider,
           voice,
         }),

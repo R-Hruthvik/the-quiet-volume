@@ -30,12 +30,10 @@ export function getProviderMaxChunkLength(provider?: TTSProvider): number {
     case 'groq':
       return 180; // Groq Orpheus hard limit is 200 chars
     case 'fish':
-      return 2500; // Fish Audio recommended chunk size
     case 'elevenlabs':
-      return 4500; // ElevenLabs Turbo handles up to 40k, 4.5k is optimal for cadence
     case 'deepgram':
     default:
-      return 1800; // Deepgram Aura optimal prose chunk
+      return 1200; // Optimal prose chunk size safely under the 2,000 server limit
   }
 }
 
@@ -185,6 +183,33 @@ export async function stitchAudioBlobs(blobs: Blob[]): Promise<Blob> {
   return new Blob([merged], { type: 'audio/mpeg' });
 }
 
+function subdivideOversizedSentence(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) return [text];
+  const parts: string[] = [];
+  let remaining = text.trim();
+  while (remaining.length > maxLength) {
+    const windowText = remaining.slice(0, maxLength);
+    let splitIdx = -1;
+    for (const punct of ['; ', ', ', '—', ' - ', ' ']) {
+      const idx = windowText.lastIndexOf(punct);
+      if (idx > maxLength * 0.35) {
+        splitIdx = idx + punct.length;
+        break;
+      }
+    }
+    if (splitIdx <= 0) {
+      splitIdx = maxLength;
+    }
+    const part = remaining.slice(0, splitIdx).trim();
+    if (part) parts.push(part);
+    remaining = remaining.slice(splitIdx).trim();
+  }
+  if (remaining) {
+    parts.push(remaining);
+  }
+  return parts;
+}
+
 export async function recordChapterAudio(
   volume: BookVolume,
   sectionIndex: number,
@@ -203,12 +228,24 @@ export async function recordChapterAudio(
       b.kind !== 'chapter-title'
   );
 
+  const provider = settings.ttsProvider || 'deepgram';
+  const voice = settings.ttsVoice || 'aura-asteria-en';
+  const maxChunkLength = getProviderMaxChunkLength(provider);
+
   const allSentences: { blockId: string; sentenceIndex: number; text: string }[] = [];
   for (const block of sectionBlocks) {
     const sList = splitIntoSentences(block.text);
     sList.forEach((st, sIdx) => {
-      if (st.trim()) {
-        allSentences.push({ blockId: block.id, sentenceIndex: sIdx, text: st.trim() });
+      const trimmed = st.trim();
+      if (trimmed) {
+        if (trimmed.length > maxChunkLength) {
+          const subList = subdivideOversizedSentence(trimmed, maxChunkLength);
+          subList.forEach((sub) => {
+            allSentences.push({ blockId: block.id, sentenceIndex: sIdx, text: sub });
+          });
+        } else {
+          allSentences.push({ blockId: block.id, sentenceIndex: sIdx, text: trimmed });
+        }
       }
     });
   }
@@ -227,9 +264,6 @@ export async function recordChapterAudio(
   }
 
   // 2. Slice into provider-safe natural chunks
-  const provider = settings.ttsProvider || 'deepgram';
-  const voice = settings.ttsVoice || 'aura-asteria-en';
-  const maxChunkLength = getProviderMaxChunkLength(provider);
 
   interface ChapterChunkItem {
     text: string;

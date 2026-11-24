@@ -90,8 +90,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 3. Payload length cap to prevent credit exhaustion
-  if (text.length > 1500) {
-    return res.status(400).json({ error: 'Text exceeds maximum limit of 1,500 characters per request' });
+  if (text.length > 2000) {
+    return res.status(400).json({ error: 'Text exceeds maximum limit of 2,000 characters per request' });
   }
 
   const startTime = Date.now();
