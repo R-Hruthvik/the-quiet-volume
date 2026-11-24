@@ -92,23 +92,6 @@ export default function App() {
   const queueRef = useRef<{ blockId: string; sentenceIndex: number; text: string }[]>([]);
   const currentSpeakNextRef = useRef<(() => void) | null>(null);
 
-  // Sync saved chapter audio files on disk / OPFS whenever active book changes
-  useEffect(() => {
-    if (!activeVolume) {
-      setSavedChapterIndices([]);
-      return;
-    }
-    let isCurrent = true;
-    listSavedChapterAudioFiles(activeVolume.title).then((indices) => {
-      if (isCurrent) {
-        setSavedChapterIndices(indices);
-      }
-    });
-    return () => {
-      isCurrent = false;
-    };
-  }, [activeVolume?.id, activeVolume?.title]);
-
   // Load persisted volumes (or seed quiet starter volumes on first visit)
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +152,23 @@ export default function App() {
     () => volumes.find((v) => v.id === activeBookId) || null,
     [volumes, activeBookId]
   );
+
+  // Sync saved chapter audio files on disk / OPFS whenever active book changes
+  useEffect(() => {
+    if (!activeVolume) {
+      setSavedChapterIndices([]);
+      return;
+    }
+    let isCurrent = true;
+    listSavedChapterAudioFiles(activeVolume.title).then((indices) => {
+      if (isCurrent) {
+        setSavedChapterIndices(indices);
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeVolume?.id, activeVolume?.title]);
 
   const effectiveLighting = useMemo(
     () => getEffectiveLighting(settings.lighting, settings.autoLighting, new Date(clockTick)),
